@@ -1,0 +1,17 @@
+scenario_id = "education_kb"
+display_name = "教辅知识库"
+industry = "教辅内容管理"
+description = "面向公司内部教辅人员的文件统一检索场景。话术库与规则通知属于业务数据，只在业务库中维护与浏览，不参与向量检索。"
+assistant_name = "教辅知识助手"
+business_domain = "教辅文件资料"
+support_contact = "系统管理员"
+faq_collection = "education_faq_hybrid_v1"
+doc_collection = "education_doc_hybrid_v1"
+valid_sources = ["documents"]
+sample_questions = ["最近上传了哪些文件？", "帮我查找最新的产品需求文档", "总结知识库中的课件内容"]
+
+[source_labels]
+documents = "文件资料"
+
+[source_patterns]
+documents = "文件|资料|文档|课件|教案|查找|最新|上传"

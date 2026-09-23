@@ -1,0 +1,13 @@
+.git
+.venv
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
+*.db
+deploy.log
+models
+logs
+reports
+tests
+eval_sets

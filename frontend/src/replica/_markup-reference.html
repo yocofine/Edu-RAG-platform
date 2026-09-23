@@ -1,0 +1,424 @@
+<!-- 原页面 <body> 内的全部结构，逐字复制（341 行，对应源文件 1401-1741 行）。
+     <body> 标签本身不再复制，因为本文件会被注入到 #replica-root 中。 -->
+
+    <!-- 登录 -->
+    <div class="auth-overlay" id="authOverlay">
+        <div class="auth-container">
+            <div class="auth-logo" aria-hidden="true"><span class="brand-symbol"></span></div>
+            <h2 id="authTitle">欢迎使用教辅知识库</h2>
+            <p class="subtitle">登录您的账户，开始高效管理知识</p>
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab active" data-tab="login">登录</button>
+                <button type="button" class="auth-tab" data-tab="register">注册</button>
+            </div>
+            <form id="authForm" autocomplete="on" onsubmit="handleAuth(event)">
+                <div class="form-group"><label>用户名</label><input type="text" id="authUsername" name="username" autocomplete="username" placeholder="请输入用户名，如：Victor" required></div>
+                <div class="form-group"><label>密码</label><input type="password" id="authPassword" name="password" autocomplete="current-password" placeholder="请输入密码" required minlength="4"></div>
+                <div class="form-group" id="confirmGroup" style="display:none;"><label>确认密码</label><input type="password" id="authConfirm" name="password_confirmation" autocomplete="new-password" placeholder="请再次输入密码" minlength="4"></div>
+                <button type="submit" class="btn btn-primary" id="authSubmitBtn">登 录</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 主应用 -->
+    <div class="app-layout" id="appLayout">
+        <aside class="sidebar" id="appSidebar">
+            <div class="sidebar-header"><div class="sidebar-logo" aria-hidden="true"><span class="brand-symbol"></span></div><span class="sidebar-brand">教辅知识库</span></div>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <div class="nav-section">主菜单</div>
+                <div class="nav-item active" data-view="chat" onclick="switchView('chat', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 智能搜索</div>
+                <div class="nav-item" data-view="files" onclick="switchView('files', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 全部文件<span class="badge" id="fileCountBadge">12</span></div>
+                <div class="nav-item" data-view="rules" onclick="switchView('rules', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 规则通知<span class="badge" id="ruleCountBadge">0</span></div>
+                <div class="nav-item" data-view="scripts" onclick="switchView('scripts', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 话术库<span class="badge" id="scriptCountBadge">0</span></div>
+                <div class="nav-item" data-view="ai-analysis" onclick="switchView('ai-analysis', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> AI 分析中心</div>
+                <div class="nav-item" data-view="logs" id="navLogs" onclick="switchView('logs', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 操作日志</div>
+                <div class="nav-section">设置</div>
+                <div class="nav-item" data-view="settings" onclick="switchView('settings', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 系统设置</div>
+                <div class="nav-section">管理</div>
+                <div class="nav-item admin-only" data-view="faqs" id="navFaqs" onclick="switchView('faqs', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> FAQ库<span class="badge" id="faqCountBadge">0</span></div>
+                <div class="nav-item" data-view="members" id="navMembers" onclick="switchView('members', this)" tabindex="0" role="button"><span class="icon" aria-hidden="true"></span> 知识库成员</div>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="storage-info"><span>存储空间</span><span id="storageUsed">4.2 MB / 10 GB</span></div>
+                <div class="storage-bar"><div class="storage-bar-fill" style="width:42%;" id="storageBarFill"></div></div>
+                <div class="user-info" onclick="handleLogout()" title="点击退出登录">
+                    <div class="user-avatar" id="userAvatar">管</div><div><div class="user-name" id="userNameDisplay">管理员</div><div class="user-role" id="userRoleDisplay">管理员</div></div>
+                </div>
+            </div>
+        </aside>
+        <button class="mobile-nav-scrim" id="mobileNavScrim" aria-label="关闭导航" onclick="toggleMobileNavigation()"></button>
+        <div class="main-content">
+            <div class="top-bar">
+                <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="打开导航" aria-controls="appSidebar" aria-expanded="false" onclick="toggleMobileNavigation()"><span></span><span></span><span></span></button>
+                <span class="page-title" id="pageTitle">智能搜索</span>
+                <div class="top-bar-actions" id="topBarActions">
+                    <button class="btn btn-outline btn-sm admin-only" onclick="openUploadModal()"><span class="app-icon app-icon-upload" aria-hidden="true"></span>上传文件</button>
+                    <button class="btn btn-ghost btn-sm" onclick="refreshCurrentView()"><span class="app-icon app-icon-refresh" aria-hidden="true"></span>刷新</button>
+                </div>
+            </div>
+            <div class="content-area" id="contentArea">
+                <!-- AI对话 -->
+                <div class="view active" id="view-chat" style="display:block;padding:16px 20px;overflow-y:auto;">
+                    <div class="chat-container">
+                        <div class="chat-welcome"><div class="ai-icon" aria-hidden="true"><span class="app-icon app-icon-spark"></span></div><h2>AI 智能知识检索</h2><p>用自然语言查找文件、话术与知识库内容</p></div>
+                        <div class="suggestions">
+                            <span class="suggestion-chip" onclick="quickSearch('产品需求文档')">产品需求文档</span>
+                            <span class="suggestion-chip" onclick="quickSearch('售后话术')">售后话术</span>
+                            <span class="suggestion-chip" onclick="quickSearch('技术架构图')">技术架构图</span>
+                        </div>
+                        <div class="chat-messages" id="chatMessages"></div>
+                        <div class="chat-input-area">
+                            <div class="chat-input-wrapper">
+                                <input type="search" id="chatInput" name="knowledge_query" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore placeholder="输入问题或文件需求..." aria-label="智能助手消息输入框" onkeydown="if(event.key==='Enter')sendChatMessage()">
+                                <button type="button" class="chat-send-btn" aria-label="发送搜索" onclick="sendChatMessage()">➤</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 全部文件（双栏） -->
+                <div class="view" id="view-files">
+                    <div class="dual-panel">
+                        <div class="left-nav" id="filesLeftNav">
+                            <div class="ln-all active" data-section-id="" onclick="selectFileSection(null, this)">📋 全部</div>
+                        </div>
+                        <div class="right-content" id="filesRightContent">
+                            <div class="file-toolbar" id="fileToolbar">
+                                <input type="text" class="search-input" placeholder="搜索文件..." id="fileSearchInput" oninput="debouncedRenderFiles()">
+                                <button class="btn btn-outline btn-sm admin-only" onclick="openUploadModal()">上传文件</button>
+                                <button class="btn btn-outline btn-sm" id="btnNewSection" onclick="openNewSectionModal()">新建板块</button>
+                                <button class="btn btn-ghost btn-sm admin-only" onclick="batchDeleteItems()">批量删除</button>
+                                <select class="admin-only" id="batchMoveSectionSelect" style="padding:7px 11px;border:2px solid var(--border);border-radius:20px;font-size:11px;" onchange="batchMoveToSection(this.value);this.value='';">
+                                    <option value="">📂 移动至板块...</option>
+                                </select>
+                                <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;" id="fileResultCount">共 0 个文件</span>
+                            </div>
+                            <div id="filesGridContainer"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 规则通知（双栏） -->
+                <div class="view" id="view-rules">
+                    <div class="dual-panel">
+                        <div class="left-nav" id="rulesLeftNav">
+                            <div class="ln-all active" data-rule-group-id="" onclick="selectRuleGroup(null, this)">📋 全部</div>
+                        </div>
+                        <div class="right-content" id="rulesRightContent">
+                            <div class="file-toolbar" id="ruleToolbar">
+                                <input type="text" class="search-input" placeholder="搜索规则..." id="ruleSearchInput" oninput="debouncedRenderRules()">
+                                <button class="btn btn-outline btn-sm admin-only" onclick="openNewRuleGroupModal()">新建分组</button>
+                                <button class="btn btn-outline btn-sm admin-only" onclick="openRuleEditor()">新建规则</button>
+                                <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;" id="ruleResultCount">共 0 条规则</span>
+                            </div>
+                            <div id="rulesGridContainer"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 话术库（双栏） -->
+                <div class="view" id="view-scripts">
+                    <div class="dual-panel">
+                        <div class="left-nav" id="scriptsLeftNav">
+                            <div class="ln-all active" data-group-id="" onclick="selectScriptGroup(null, this)">📋 全部</div>
+                        </div>
+                        <div class="right-content" id="scriptsRightContent">
+                            <div class="file-toolbar" id="scriptToolbar">
+                                <input type="text" class="search-input" placeholder="搜索话术..." id="scriptSearchInput" oninput="debouncedRenderScripts()">
+                                <button class="btn btn-outline btn-sm" onclick="openNewScriptGroupModal()">新建话术组</button>
+                                <button class="btn btn-outline btn-sm" onclick="openScriptEditor()">新建话术</button>
+                                <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;" id="scriptResultCount">共 0 条话术</span>
+                            </div>
+                            <div id="scriptsGridContainer"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- AI分析 -->
+                <div class="view" id="view-ai-analysis" style="display:none;padding:16px 20px;overflow-y:auto;">
+                    <div class="ai-panel">
+                        <div class="ai-stat-card"><div class="stat-value" id="statFileCount">12</div><div class="stat-label">已分析文件总数</div></div>
+                        <div class="ai-stat-card"><div class="stat-value" id="statQuestionCount">0</div><div class="stat-label">累计智能检索问题</div></div>
+                        <div class="ai-stat-card"><div class="stat-value" id="statSectionCount">4</div><div class="stat-label">板块数量</div></div>
+                        <div class="ai-stat-card"><div class="stat-value">98.5%</div><div class="stat-label">内容识别准确率</div></div>
+                    </div>
+                    <div style="margin-top:14px;background:#fff;border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm);">
+                        <h4 style="margin-bottom:10px;">高频问题云</h4>
+                        <div class="ai-keyword-cloud" id="keywordCloud"></div>
+                    </div>
+                    <section class="ingestion-job-panel" aria-labelledby="ingestionJobTitle">
+                        <div class="ingestion-job-heading">
+                            <div><h4 id="ingestionJobTitle">入库任务</h4><p>查看解析、切块和向量化进度，可对已完成或异常任务重新解析。</p></div>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="refreshIngestionJobs()">刷新任务</button>
+                        </div>
+                        <div id="ingestionJobList" class="ingestion-job-list" aria-live="polite"></div>
+                    </section>
+                </div>
+                <!-- 操作日志 -->
+                <div class="view" id="view-logs" style="display:none;padding:16px 20px;overflow-y:auto;">
+                    <div class="log-table-wrap">
+                        <div class="log-toolbar">
+                            <select id="logTypeFilter" onchange="renderLogs()" style="padding:7px 11px;border:2px solid var(--border);border-radius:20px;font-size:11px;">
+                                <option value="">全部操作类型</option><option value="上传">上传</option><option value="删除">删除</option><option value="重命名">重命名</option><option value="移动">移动</option><option value="新建板块">新建板块</option><option value="新建话术组">新建话术组</option><option value="新建话术">新建话术</option><option value="编辑话术">编辑话术</option>
+                            </select>
+                            <input type="text" class="search-input" placeholder="搜索操作人..." id="logOperatorSearch" oninput="debouncedRenderLogs()" style="width:170px;">
+                            <button class="btn btn-danger btn-xs" onclick="clearAllLogs()" style="margin-left:auto;">清空日志</button>
+                            <span style="font-size:11px;color:var(--text-secondary);" id="logTotalCount">共 0 条</span>
+                        </div>
+                        <div style="overflow-x:auto;"><table class="log-table"><thead><tr><th>操作时间</th><th>操作人</th><th>操作类型</th><th>目标类型</th><th>目标名称</th><th>目标路径</th></tr></thead><tbody id="logTableBody"></tbody></table></div>
+                        <div class="log-pagination" id="logPagination"></div>
+                    </div>
+                </div>
+                <!-- 设置 -->
+                <div class="view" id="view-settings" style="display:none;padding:16px 20px;overflow-y:auto;">
+                    <div style="max-width:560px;">
+                        <div style="background:#fff;border-radius:var(--radius);padding:22px;box-shadow:var(--shadow-sm);margin-bottom:14px;">
+                            <h4 style="margin-bottom:14px;">个人信息</h4>
+                            <div class="form-group"><label>用户名</label><input id="settingsUsername" readonly></div>
+                            <div class="form-group"><label>角色</label><input id="settingsRole" readonly></div>
+                        </div>
+                        <div style="background:#fff;border-radius:var(--radius);padding:22px;box-shadow:var(--shadow-sm);">
+                            <h4 style="margin-bottom:14px;">安全设置</h4>
+                            <button class="btn btn-outline btn-sm" onclick="openPasswordModal()">修改密码</button>
+                            <button class="btn btn-danger btn-sm" style="margin-left:7px;" onclick="handleLogout()">退出登录</button>
+                        </div>
+                        <form class="admin-only dingtalk-settings-card" id="dingtalkSettingsForm" autocomplete="off" onsubmit="saveDingtalkSettings(event)">
+                            <div class="dingtalk-settings-heading">
+                                <div><h4>钉钉群机器人</h4><p>新建或更新规则通知后自动推送，也可在规则卡片中手动重推。</p></div>
+                                <label class="dingtalk-toggle"><input type="checkbox" id="dingtalkEnabled"> 启用</label>
+                            </div>
+                            <label class="form-group">Webhook
+                                <input type="text" class="credential-secret-field" id="dingtalkWebhook" name="dingtalk_webhook" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore placeholder="粘贴钉钉机器人 Webhook；留空则保留现有配置" onblur="validateDingtalkWebhook()">
+                                <small id="dingtalkWebhookHint">尚未配置</small>
+                            </label>
+                            <label class="form-group">加签密钥 Secret
+                                <input type="text" class="credential-secret-field" id="dingtalkSecret" name="dingtalk_robot_secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore placeholder="SEC 开头；留空则保留现有密钥">
+                                <small id="dingtalkSecretHint">尚未配置</small>
+                            </label>
+                            <div class="dingtalk-settings-actions">
+                                <button type="submit" class="btn btn-primary btn-sm" id="dingtalkSaveButton">保存配置</button>
+                                <button type="button" class="btn btn-outline btn-sm" id="dingtalkTestButton" onclick="testDingtalkSettings()">发送测试消息</button>
+                            </div>
+                            <p class="dingtalk-settings-status" id="dingtalkSettingsStatus" role="status" aria-live="polite"></p>
+                        </form>
+                    </div>
+                </div>
+                <!-- 知识库成员 -->
+                <div class="view" id="view-members" style="display:none;padding:16px 20px;overflow-y:auto;">
+                    <div style="max-width:820px;">
+                        <div style="background:#fff;border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-sm);">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                                <h4 style="display:flex;align-items:center;gap:6px;">知识库成员 <span id="memberTotal" style="font-size:12px;color:var(--text-secondary);font-weight:500;"></span></h4>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    <input type="text" class="search-input" placeholder="搜索成员..." id="memberSearchInput" oninput="debouncedRenderMembers()" style="width:180px;">
+                                    <span class="role-badge admin">管理员可设置成员角色</span>
+                                </div>
+                            </div>
+                            <div style="overflow-x:auto;"><table class="member-table"><thead><tr><th>用户名</th><th>角色</th><th>注册时间</th><th style="text-align:right;">操作</th></tr></thead><tbody id="memberTableBody"></tbody></table></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- FAQ库（独立于文档库，仅管理员可维护） -->
+                <div class="view" id="view-faqs" style="display:none;padding:16px 20px;overflow-y:auto;">
+                    <section class="faq-admin-panel">
+                        <div class="faq-admin-heading">
+                            <div><h4>FAQ库</h4><p>维护标准问题与标准答案。FAQ 独立存储，并优先参与智能问答。</p></div>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openFaqEditor()">新建 FAQ</button>
+                        </div>
+                        <div class="faq-admin-toolbar">
+                            <input type="search" class="search-input" id="faqSearchInput" autocomplete="off" placeholder="搜索问题、答案或标签…" oninput="debouncedRenderFaqs()">
+                            <select id="faqCategoryFilter" onchange="renderFaqs()"><option value="">全部分类</option></select>
+                            <span id="faqResultCount">共 0 条 FAQ</span>
+                        </div>
+                        <div id="faqGrid" class="faq-grid" aria-live="polite"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal-overlay" id="uploadModal" style="display:none;" onclick="if(event.target===this)closeUploadModal()">
+        <div class="modal"><h3>📤 上传文件</h3><div class="form-group"><label>文件标题（必填）</label><input type="text" id="uploadTitleInput" placeholder="请输入文件标题"></div>
+            <div class="form-group"><label>所属板块</label><select id="uploadSectionSelect"></select></div>
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('uploadInput').click()"><span class="upload-icon">☁️</span>点击选择文件 或 Ctrl+V 粘贴图片</div>
+            <input type="file" id="uploadInput" style="display:none;" multiple onchange="handleFileUpload(event)"><div id="uploadPreview" style="margin-top:10px;font-size:12px;color:var(--text-secondary);"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeUploadModal()">取消</button><button class="btn btn-success btn-sm" onclick="confirmUpload()">确认上传</button></div></div>
+    </div>
+    <div class="modal-overlay" id="previewModal" style="display:none;" onclick="if(event.target===this)closePreviewModal()">
+        <div class="modal" style="width:560px;"><h3 id="previewTitle">📄 文件预览</h3><div id="previewContent" style="text-align:center;padding:16px;"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closePreviewModal()">关闭</button><button class="btn btn-primary btn-sm" id="previewDownloadBtn">📥 下载</button></div></div>
+    </div>
+    <div class="modal-overlay" id="renameModal" style="display:none;" onclick="if(event.target===this)closeRenameModal()">
+        <div class="modal" style="width:400px;"><h3>✏️ 重命名</h3><div class="form-group"><label>新名称</label><input type="text" id="renameInput"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeRenameModal()">取消</button><button class="btn btn-primary btn-sm" onclick="confirmRename()">确认</button></div></div>
+    </div>
+    <div class="modal-overlay" id="newSectionModal" style="display:none;" onclick="if(event.target===this)closeNewSectionModal()">
+        <div class="modal" style="width:400px;"><h3>📂 新建板块</h3><div class="form-group"><label>板块名称</label><input type="text" id="newSectionNameInput" placeholder="请输入板块名称"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeNewSectionModal()">取消</button><button class="btn btn-primary btn-sm" onclick="confirmNewSection()">创建</button></div></div>
+    </div>
+    <div class="modal-overlay" id="newGroupModal" style="display:none;" onclick="if(event.target===this)closeNewGroupModal()">
+        <div class="modal" style="width:400px;"><h3>📁 新建话术组</h3><div class="form-group"><label>组名称</label><input type="text" id="newGroupNameInput" placeholder="请输入话术组名称"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeNewGroupModal()">取消</button><button class="btn btn-primary btn-sm" onclick="confirmNewGroup()">创建</button></div></div>
+    </div>
+    <div class="modal-overlay" id="scriptEditorModal" style="display:none;" onclick="if(event.target===this)closeScriptEditor()">
+        <div class="modal" style="width:540px;"><h3 id="scriptEditorTitle">➕ 新建话术</h3>
+            <div class="form-group"><label>话术标题（必填）</label><input type="text" id="scriptTitleInput" placeholder="请输入话术标题"></div>
+            <div class="form-group"><label>所属话术组</label><select id="scriptGroupSelect"></select></div>
+            <div class="form-group"><label>正文内容（必填）</label>
+                <div class="rich-toolbar"><button type="button" onmousedown="event.preventDefault()" onclick="execRichCmd('bold')"><b>B</b></button><button type="button" onmousedown="event.preventDefault()" onclick="execRichCmd('italic')"><i>I</i></button><button type="button" onmousedown="event.preventDefault()" onclick="execRichCmd('insertUnorderedList')">☰</button><button type="button" class="rich-color-toggle" onmousedown="event.preventDefault()" onclick="toggleRichColorPicker(event)" title="字体颜色">A</button></div>
+                <div class="rich-editor" id="richEditor" contenteditable="true" placeholder="在此输入话术正文..."></div>
+            </div>
+            <div class="form-group"><label>标签（可选，逗号分隔）</label><input type="text" id="scriptTagsInput" placeholder="如：开场白,异议处理"></div>
+            <input type="hidden" id="scriptEditId" value="">
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeScriptEditor()">取消</button><button class="btn btn-primary btn-sm" onclick="saveScript()">💾 保存话术</button></div></div>
+    </div>
+    <div class="modal-overlay" id="moveModal" style="display:none;" onclick="if(event.target===this)closeMoveModal()">
+        <div class="modal" style="width:420px;"><h3>📂 移动到板块</h3><div class="form-group"><label>目标板块</label><select id="moveSectionSelect"></select></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeMoveModal()">取消</button><button class="btn btn-primary btn-sm" onclick="confirmMoveToSection()">确认移动</button></div></div>
+    </div>
+    <!-- 通用确认模态框 -->
+    <div class="modal-overlay" id="confirmModal" style="display:none;" onclick="if(event.target===this)closeConfirmModal()" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <div class="modal" style="width:400px;"><h3 id="confirmTitle">提示</h3><p id="confirmMessage" style="font-size:var(--font-sm);color:var(--text-secondary);line-height:1.6;"></p>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeConfirmModal()">取消</button><button class="btn btn-primary btn-sm" id="confirmOkBtn">确认</button></div></div>
+    </div>
+    <!-- 通用输入模态框 -->
+    <div class="modal-overlay" id="promptModal" style="display:none;" onclick="if(event.target===this)closePromptModal()" role="dialog" aria-modal="true" aria-labelledby="promptTitle">
+        <div class="modal" style="width:400px;"><h3 id="promptTitle">输入</h3><div class="form-group"><label id="promptLabel">名称</label><input type="text" id="promptInput"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closePromptModal()">取消</button><button class="btn btn-primary btn-sm" id="promptOkBtn">确认</button></div></div>
+    </div>
+    <!-- 修改密码模态框 -->
+    <div class="modal-overlay" id="passwordModal" style="display:none;" onclick="if(event.target===this)closePasswordModal()" role="dialog" aria-modal="true" aria-labelledby="passwordModalTitle">
+        <form class="modal" id="passwordChangeForm" autocomplete="off" style="width:400px;" onsubmit="event.preventDefault();confirmChangePassword()"><h3 id="passwordModalTitle">🔒 修改密码</h3>
+            <div class="form-group"><label>原密码</label><input type="password" id="oldPasswordInput" name="current_password" autocomplete="current-password" placeholder="请输入当前密码"></div>
+            <div class="form-group"><label>新密码</label><input type="password" id="newPasswordInput" name="new_password" autocomplete="new-password" placeholder="至少4位" minlength="4"></div>
+            <div class="form-group"><label>确认新密码</label><input type="password" id="confirmNewPasswordInput" name="new_password_confirmation" autocomplete="new-password" placeholder="请再次输入新密码" minlength="4"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-ghost btn-sm" onclick="closePasswordModal()">取消</button><button type="submit" class="btn btn-primary btn-sm">确认修改</button></div></form>
+    </div>
+    <div class="modal-overlay" id="faqEditorModal" style="display:none;" onclick="if(event.target===this)closeFaqEditor()" role="dialog" aria-modal="true" aria-labelledby="faqEditorTitle">
+        <form class="modal faq-editor-modal" id="faqEditorForm" onsubmit="saveFaq(event)">
+            <h3 id="faqEditorTitle">新建 FAQ</h3>
+            <input type="hidden" id="faqEditId">
+            <label class="form-group">标准问题
+                <input type="text" id="faqQuestionInput" maxlength="2000" required placeholder="例如：如何申请课前沟通？" onblur="validateFaqEditor()">
+            </label>
+            <label class="form-group">标准答案
+                <textarea id="faqAnswerInput" rows="9" maxlength="20000" required placeholder="请输入准确、可直接回复用户的标准答案" onblur="validateFaqEditor()"></textarea>
+            </label>
+            <label class="form-group">分类
+                <input type="text" id="faqCategoryInput" list="faqCategoryOptions" maxlength="120" value="通用" required>
+                <datalist id="faqCategoryOptions"></datalist>
+            </label>
+            <label class="form-group">标签
+                <input type="text" id="faqTagsInput" maxlength="1000" placeholder="多个标签使用逗号分隔">
+            </label>
+            <p class="faq-editor-error" id="faqEditorError" role="alert" aria-live="polite"></p>
+            <div class="modal-actions"><button type="button" class="btn btn-ghost btn-sm" onclick="closeFaqEditor()">取消</button><button type="submit" class="btn btn-primary btn-sm" id="faqSaveButton">保存并入库</button></div>
+        </form>
+    </div>
+    <!-- 话术预览模态框 -->
+    <div class="modal-overlay" id="scriptPreviewModal" style="display:none;" onclick="if(event.target===this)closeScriptPreview()" role="dialog" aria-modal="true">
+        <div class="modal" style="width:700px;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 id="scriptPreviewTitle" style="margin:0;">话术预览</h3>
+                <button class="btn btn-ghost btn-sm" onclick="closeScriptPreview()">✕ 关闭</button>
+            </div>
+            <div id="scriptPreviewMeta" style="font-size:var(--font-xs);color:var(--text-secondary);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);"></div>
+            <div id="scriptPreviewContent" style="line-height:1.8;font-size:var(--font-base);min-height:100px;"></div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-align:right;">
+                <button class="btn btn-primary btn-sm" id="scriptPreviewCopyBtn">📋 复制全文</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建规则分组模态框 -->
+    <div class="modal-overlay" id="newRuleGroupModal" style="display:none;" onclick="if(event.target===this)closeNewRuleGroupModal()">
+        <div class="modal" style="width:400px;"><h3>📁 新建分组</h3><div class="form-group"><label>组名称</label><input type="text" id="newRuleGroupNameInput" placeholder="请输入分组名称"></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeNewRuleGroupModal()">取消</button><button class="btn btn-primary btn-sm" onclick="confirmNewRuleGroup()">创建</button></div></div>
+    </div>
+    <!-- 规则编辑器模态框 -->
+    <div class="modal-overlay" id="ruleEditorModal" style="display:none;" onclick="if(event.target===this)closeRuleEditor()">
+        <div class="modal" style="width:540px;"><h3 id="ruleEditorTitle">➕ 新建规则</h3>
+            <div class="form-group"><label>所属分组</label><select id="ruleGroupSelect"></select></div>
+            <div class="form-group"><label>标题（可选，留空则自动生成）</label><input type="text" id="ruleTitleInput" placeholder="请输入规则标题"></div>
+            <div class="form-group"><label>📷 规则截图（上传截图保存留存，AI自动识别文字填充正文）</label>
+                <div id="ruleImageDropZone" style="border:2px dashed var(--border);border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;" onclick="document.getElementById('ruleImageFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='#f0f7ff';" ondragleave="this.style.borderColor='var(--border)';this.style.background='';" ondrop="handleRuleImageDrop(event)">
+                    <div id="ruleImagePlaceholder">
+                        <div style="font-size:22px;margin-bottom:2px;">📎</div>
+                        <div style="font-size:var(--font-xs);color:var(--text-secondary);">点击上传截图 或 Ctrl+V 粘贴截图</div>
+                        <div style="font-size:var(--font-xxs);color:var(--text-secondary);margin-top:2px;">支持 PNG / JPG，截图将保存留存，AI自动识别文字填充正文</div>
+                    </div>
+                    <div id="ruleImagePreview" style="display:none;margin-top:8px;">
+                        <img id="ruleImagePreviewImg" style="max-width:100%;max-height:200px;border-radius:4px;border:1px solid var(--border);" />
+                        <button class="btn btn-ghost btn-xs" style="margin-top:4px;" onclick="event.stopPropagation();clearRuleImage()">✕ 移除图片</button>
+                    </div>
+                    <input type="file" id="ruleImageFileInput" accept="image/*" style="display:none;" onchange="handleRuleImageFile(this)">
+                </div>
+            </div>
+            <input type="hidden" id="ruleImagePath" value="">
+            <div class="form-group"><label>正文内容（必填）</label>
+                <div class="rich-toolbar"><button type="button" onmousedown="event.preventDefault()" onclick="execRichCmd('bold')"><b>B</b></button><button type="button" onmousedown="event.preventDefault()" onclick="execRichCmd('italic')"><i>I</i></button><button type="button" onmousedown="event.preventDefault()" onclick="execRichCmd('insertUnorderedList')">☰</button><button type="button" class="rich-color-toggle" onmousedown="event.preventDefault()" onclick="toggleRichColorPicker(event)" title="字体颜色">A</button></div>
+                <div class="rich-editor" id="ruleRichEditor" contenteditable="true" placeholder="在此输入规则正文，或上传截图自动识别..."></div>
+            </div>
+            <div class="form-group"><label>标签（可选，逗号分隔）</label><input type="text" id="ruleTagsInput" placeholder="如：通知,规则,公告"></div>
+            <input type="hidden" id="ruleEditId" value="">
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeRuleEditor()">取消</button><button class="btn btn-primary btn-sm" onclick="saveRule()">💾 保存规则</button></div></div>
+    </div>
+    <!-- 字体颜色选择面板（与钉钉客户端一致的 8 色 + 默认）。
+         系统内渲染真颜色；推送钉钉时由后端转成 emoji 色点。 -->
+    <div class="rich-color-picker" id="richColorPicker" style="display:none;" role="dialog" aria-label="字体颜色">
+        <div class="rich-color-grid">
+            <button type="button" class="rich-color-swatch" data-color="#FF0000" title="红色" onmousedown="event.preventDefault()" onclick="applyRichColor('#FF0000')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#FF7F00" title="橙色" onmousedown="event.preventDefault()" onclick="applyRichColor('#FF7F00')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#00B050" title="绿色" onmousedown="event.preventDefault()" onclick="applyRichColor('#00B050')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#FFD700" title="黄色" onmousedown="event.preventDefault()" onclick="applyRichColor('#FFD700')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#7030A0" title="紫色" onmousedown="event.preventDefault()" onclick="applyRichColor('#7030A0')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#0070C0" title="蓝色" onmousedown="event.preventDefault()" onclick="applyRichColor('#0070C0')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#FF69B4" title="粉色" onmousedown="event.preventDefault()" onclick="applyRichColor('#FF69B4')"></button>
+            <button type="button" class="rich-color-swatch" data-color="#9ACD32" title="橙绿" onmousedown="event.preventDefault()" onclick="applyRichColor('#9ACD32')"></button>
+        </div>
+        <button type="button" class="rich-color-default" onmousedown="event.preventDefault()" onclick="applyRichColor('#000000')">默认颜色</button>
+        <p class="rich-color-hint">颜色会随通知一起同步到钉钉。</p>
+    </div>
+
+    <!-- 规则预览模态框 -->
+    <div class="modal-overlay" id="rulePreviewModal" style="display:none;" onclick="if(event.target===this)closeRulePreview()" role="dialog" aria-modal="true">
+        <div class="modal" style="width:700px;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 id="rulePreviewTitle" style="margin:0;">规则预览</h3>
+                <button class="btn btn-ghost btn-sm" onclick="closeRulePreview()">✕ 关闭</button>
+            </div>
+            <div id="rulePreviewMeta" style="font-size:var(--font-xs);color:var(--text-secondary);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);"></div>
+            <div id="rulePreviewContent" style="line-height:1.8;font-size:var(--font-base);min-height:100px;"></div>
+            <div id="rulePreviewImage" style="margin-top:16px;display:none;">
+                <div style="font-size:var(--font-xs);color:var(--text-secondary);margin-bottom:6px;">📷 规则截图</div>
+                <img id="rulePreviewImg" style="max-width:100%;border-radius:8px;border:1px solid var(--border);" />
+            </div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-align:right;">
+                <button class="btn btn-primary btn-sm" id="rulePreviewCopyBtn">📋 复制全文</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右键菜单 -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="ctxAction('preview')">👁️ 预览</div>
+        <div class="context-menu-item" onclick="ctxAction('download')">📥 下载</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" id="ctxRename" onclick="ctxAction('rename')">✏️ 重命名</div>
+        <div class="context-menu-item" id="ctxMove" onclick="ctxAction('move')">📂 移动到板块...</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" id="ctxDelete" onclick="ctxAction('delete')">🗑️ 删除</div>
+    </div>
+    <div class="context-menu" id="sectionCtxMenu">
+        <div class="context-menu-item" onclick="sectionCtxAction('rename')">✏️ 重命名板块</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" onclick="sectionCtxAction('delete')">🗑️ 删除板块</div>
+    </div>
+    <div class="context-menu" id="groupCtxMenu">
+        <div class="context-menu-item" id="ctxGroupRename" onclick="groupCtxAction('rename')">✏️ 重命名组</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" id="ctxGroupDelete" onclick="groupCtxAction('delete')">🗑️ 删除组</div>
+    </div>
+    <div class="context-menu" id="ruleGroupCtxMenu">
+        <div class="context-menu-item" id="ctxRuleGroupRename" onclick="ruleGroupCtxAction('rename')">✏️ 重命名组</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" id="ctxRuleGroupDelete" onclick="ruleGroupCtxAction('delete')">🗑️ 删除组</div>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>

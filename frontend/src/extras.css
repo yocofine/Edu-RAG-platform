@@ -1,0 +1,11 @@
+.page-actions { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.card-actions { display: flex; gap: 7px; margin-top: 13px; }
+.card-actions button, td button {
+  border: 1px solid #dce1ea; background: #fff; border-radius: 6px;
+  padding: 5px 9px; cursor: pointer;
+}
+.modal textarea, .review-modal textarea {
+  width: 100%; border: 1px solid #dce1ec; border-radius: 8px;
+  padding: 11px; resize: vertical; font: inherit;
+}
+.review-modal { width: min(1000px, 95vw); }

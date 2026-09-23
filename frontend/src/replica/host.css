@@ -1,0 +1,54 @@
+/*
+ * 复刻版宿主样式。
+ * 原页面把 .auth-overlay / .app-layout / 各个弹窗直接挂在 <body> 下，
+ * legacy.css 里也写着 body { display:flex; height:100vh; overflow:hidden }。
+ * Vue 会多包一层 #app，这里用 display:contents 把中间的容器从盒子树里去掉，
+ * 让注入的节点重新成为 body 的直接子元素，从而与原页面布局完全一致。
+ */
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+#app {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#replica-root {
+  display: contents;
+}
+
+.replica-failure {
+  margin: auto;
+  padding: 32px 36px;
+  max-width: 520px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  color: #1f2329;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.replica-failure h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.replica-failure p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #646a73;
+}
+
+.replica-failure code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f0f1f3;
+  font-size: 13px;
+}

@@ -1,0 +1,2 @@
+"""EduRAG unified FastAPI backend."""
+

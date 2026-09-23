@@ -1,0 +1,23 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/dist/
+storage/
+models/*
+!models/README.md
+logs/
+reports/
+*.db
+*.zip
+
+# Locally supplied knowledge-base materials are not application source.
+docs/*
+!docs/encoding-repair.md
+
+# Editor and emergency source backups stay out of version control.
+*.bak*
+*.orig
+*.tmp
+/%SystemDrive%/
