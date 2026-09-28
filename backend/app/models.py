@@ -137,6 +137,19 @@ class ScriptItem(Base):
     owner: Mapped[User] = relationship()
 
 
+class ContentGroup(Base):
+    __tablename__ = "content_groups"
+    __table_args__ = (UniqueConstraint("kind", "name", name="uq_content_group_kind_name"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: uid("grp"))
+    kind: Mapped[str] = mapped_column(String(20), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    owner: Mapped[User] = relationship()
+
+
 class RuleItem(Base):
     __tablename__ = "rules"
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: uid("rule"))

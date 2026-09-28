@@ -418,6 +418,17 @@
             } catch { clearToken(); return false; }
         }
 
+        function handleAuthExpired() {
+            APP_STATE.isLoggedIn = false;
+            clearToken();
+            if (ingestionSocket) { ingestionSocket.close(); ingestionSocket = null; }
+            document.getElementById('appLayout')?.classList.remove('visible');
+            const overlay = document.getElementById('authOverlay');
+            overlay?.classList.remove('hidden');
+            overlay?.removeAttribute('inert');
+            showToast('登录已过期，请重新登录', 'error');
+        }
+
         // ==================== 视图切换 ====================
         function switchView(viewName, navItem) {
             APP_STATE.currentView = viewName;
@@ -2429,6 +2440,7 @@
             setupGlobalListeners(); const so = loadSectionOrder(); if (so && so.length > 0) APP_STATE.sectionOrder = so; const
                 sgo = loadScriptGroupOrder(); if (sgo && sgo.length > 0) APP_STATE.scriptGroupOrder = sgo; const
                 rgo = loadRuleGroupOrder(); if (rgo && rgo.length > 0) APP_STATE.ruleGroupOrder = rgo;
+            window.addEventListener('replica-auth-expired', handleAuthExpired, { once: true });
             // authOverlay 默认可见；autoLogin 成功时会通过 loginSuccess 隐藏它
             autoLogin();
             updateStorage();

@@ -1,5 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 const CSRF_STORAGE_KEY = 'edu_rag_csrf_token'
+let refreshPromise = null
 
 function cookie(name) {
   const item = document.cookie.split('; ').find(row => row.startsWith(`${name}=`))
@@ -25,11 +26,20 @@ function csrfToken() {
 }
 
 async function refreshCsrf() {
-  const response = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.detail || '登录已失效，请重新登录')
-  rememberCsrf(data.csrf_token)
-  return data.csrf_token || ''
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        clearCsrf()
+        window.dispatchEvent(new CustomEvent('edu-rag-auth-expired'))
+        throw new Error(data.detail || '登录已失效，请重新登录')
+      }
+      rememberCsrf(data.csrf_token)
+      return data.csrf_token || ''
+    })().finally(() => { refreshPromise = null })
+  }
+  return refreshPromise
 }
 
 export async function request(path, options = {}) {
@@ -43,7 +53,11 @@ export async function request(path, options = {}) {
     const contentType = response.headers.get('content-type') || ''
     const data = contentType.includes('json') ? await response.json() : await response.blob()
     if (!response.ok) {
-      if (!retried && response.status === 403 && data?.detail === 'CSRF校验失败') {
+      const refreshExcluded = ['/auth/login', '/auth/register', '/auth/refresh'].includes(path)
+      const canRefresh = !refreshExcluded && (
+        response.status === 401 || (response.status === 403 && data?.detail === 'CSRF校验失败')
+      )
+      if (!retried && canRefresh) {
         await refreshCsrf()
         return execute(true)
       }

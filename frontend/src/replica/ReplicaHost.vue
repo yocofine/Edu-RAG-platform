@@ -71,11 +71,11 @@ onMounted(async () => {
     host.value.innerHTML = markup
     removeResponsiveHandlers = installResponsiveNavigation()
 
-    await loadScript('/replica/legacy-api.js?v=20260928-csrf-recovery') // 定义 AuthAPI / FileAPI 等全局对象
+    await loadScript('/replica/legacy-api.js?v=20260928-groups-auth') // 定义 AuthAPI / FileAPI 等全局对象
     if (disposed) return
     if (window.ReplicaAuth?.bootstrap) await window.ReplicaAuth.bootstrap()  // 让已有的 Cookie 会话可以自动登录
     if (disposed) return
-    await loadScript('/replica/legacy-app.js?v=20260928-csrf-recovery') // 原页面逻辑，末尾会自行调用 init()
+    await loadScript('/replica/legacy-app.js?v=20260928-groups-auth') // 原页面逻辑，末尾会自行调用 init()
   } catch (error) {
     failure.value = error?.message || String(error)
   }

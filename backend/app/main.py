@@ -9,7 +9,7 @@ from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .events import event_hub
 from .models import IngestionJob, JobStatus, Section
-from .routers import admin, ai, auth, chat, content, conversations, documents, faqs, sections
+from .routers import admin, ai, auth, chat, content, content_groups, conversations, documents, faqs, sections
 from .security import decode_token
 
 
@@ -68,6 +68,7 @@ for api_router in (
     ai.router,
     admin.router,
     faqs.router,
+    content_groups.router,
     content.router,
 ):
     app.include_router(api_router, prefix="/api/v1")

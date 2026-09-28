@@ -114,6 +114,10 @@ class ContentRequest(BaseModel):
     tags: str = ""
 
 
+class ContentGroupRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
 class ParsedContentRequest(BaseModel):
     content: str = Field(min_length=1, max_length=2_000_000)
 

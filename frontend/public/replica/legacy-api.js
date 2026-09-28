@@ -39,6 +39,7 @@
 
   var TOKEN_KEY = 'kb_token';
   var CSRF_KEY = 'edu_rag_csrf_token';
+  var csrfRefreshPromise = null;
 
   /* ============================ 基础工具 ============================ */
 
@@ -66,14 +67,20 @@
   }
 
   function refreshCsrf() {
-    return fetch(API_BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
+    if (csrfRefreshPromise) return csrfRefreshPromise;
+    csrfRefreshPromise = fetch(API_BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (data) {
-          if (!response.ok) throw apiError(data, response.status);
+          if (!response.ok) {
+            clearCsrf();
+            window.dispatchEvent(new CustomEvent('replica-auth-expired'));
+            throw apiError(data, response.status);
+          }
           rememberCsrf(data.csrf_token);
           return data.csrf_token || '';
         });
-      });
+      }).finally(function () { csrfRefreshPromise = null; });
+    return csrfRefreshPromise;
   }
 
   function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
@@ -112,7 +119,11 @@
           var parsed = type.indexOf('json') >= 0 ? response.json().catch(function () { return null; }) : Promise.resolve(null);
           return parsed.then(function (data) {
             if (!response.ok) {
-              if (!retried && response.status === 403 && data && data.detail === 'CSRF校验失败') {
+              var refreshExcluded = ['/auth/login', '/auth/register', '/auth/refresh'].indexOf(path) >= 0;
+              var canRefresh = !refreshExcluded && (
+                response.status === 401 || (response.status === 403 && data && data.detail === 'CSRF校验失败')
+              );
+              if (!retried && canRefresh) {
                 return refreshCsrf().then(function () { return execute(true); });
               }
               throw apiError(data, response.status);
@@ -340,17 +351,17 @@
     };
   }
 
-  function listDerivedGroups(kind, endpoint) {
-    return request(endpoint).then(function (data) {
-      var names = [];
-      (data.items || []).forEach(function (item) {
-        var name = String(item.group_name || '').trim() || fallbackGroup(kind);
-        if (names.indexOf(name) < 0) names.push(name);
-      });
-      readLocalGroups(kind).forEach(function (name) { if (names.indexOf(name) < 0) names.push(name); });
+  function listDerivedGroups(kind) {
+    return request('/content-groups/' + encodeURIComponent(kind)).then(function (data) {
       return {
-        groups: names.map(function (name, index) {
-          return { id: name, name: name, icon: kind === 'rules' ? '📢' : '💬', owner: 'admin', sort_order: index };
+        groups: (data.items || []).map(function (item, index) {
+          return {
+            id: item.id || item.name,
+            name: item.name,
+            icon: kind === 'rules' ? '📢' : '💬',
+            owner: item.owner || 'admin',
+            sort_order: Number(item.sort_order == null ? index : item.sort_order)
+          };
         })
       };
     });
@@ -358,36 +369,21 @@
 
   /* 重命名 / 删除分组 = 逐个改写组内内容的 group_name。 */
   function renameGroupEverywhere(kind, endpoint, from, to) {
-    return request(endpoint).then(function (data) {
-      var targets = (data.items || []).filter(function (item) { return (item.group_name || fallbackGroup(kind)) === from; });
-      return targets.reduce(function (chain, item) {
-        return chain.then(function () {
-          return request(endpoint + '/' + encodeURIComponent(item.id), {
-            method: 'PUT',
-            body: JSON.stringify({
-              title: item.title, content: item.content || '', group_name: to, tags: item.tags || ''
-            })
-          });
-        });
-      }, Promise.resolve());
-    }).then(function () { renameLocalGroup(kind, from, to); });
+    return request('/content-groups/' + encodeURIComponent(kind) + '/' + encodeURIComponent(from), {
+      method: 'PUT', body: JSON.stringify({ name: to })
+    });
   }
 
   function deleteGroupEverywhere(kind, endpoint, name) {
-    return request(endpoint).then(function (data) {
-      var targets = (data.items || []).filter(function (item) { return (item.group_name || fallbackGroup(kind)) === name; });
-      return targets.reduce(function (chain, item) {
-        return chain.then(function () {
-          return request(endpoint + '/' + encodeURIComponent(item.id), { method: 'DELETE' });
-        });
-      }, Promise.resolve());
-    }).then(function () { dropLocalGroup(kind, name); });
+    return request('/content-groups/' + encodeURIComponent(kind) + '/' + encodeURIComponent(name), { method: 'DELETE' });
   }
 
   function makeGroupAPI(kind, endpoint) {
     return {
-      list: function () { return listDerivedGroups(kind, endpoint); },
-      create: function (name) { addLocalGroup(kind, name); return Promise.resolve({ ok: true }); },
+      list: function () { return listDerivedGroups(kind); },
+      create: function (name) {
+        return request('/content-groups/' + encodeURIComponent(kind), { method: 'POST', body: JSON.stringify({ name: name }) });
+      },
       rename: function (id, name) { return renameGroupEverywhere(kind, endpoint, id, name); },
       remove: function (id) { return deleteGroupEverywhere(kind, endpoint, id); },
       reorder: function () { return Promise.resolve({ ok: true }); }
@@ -425,8 +421,10 @@
 
   var ScriptAPI = makeContentAPI('scripts', '/scripts');
   var RuleAPI = Object.assign(makeContentAPI('rules', '/rules'), {
-    listGroups: function () { return listDerivedGroups('rules', '/rules'); },
-    createGroup: function (name) { addLocalGroup('rules', name); return Promise.resolve({ ok: true }); },
+    listGroups: function () { return listDerivedGroups('rules'); },
+    createGroup: function (name) {
+      return request('/content-groups/rules', { method: 'POST', body: JSON.stringify({ name: name }) });
+    },
     updateGroup: function (id, name) { return renameGroupEverywhere('rules', '/rules', id, name); },
     deleteGroup: function (id) { return deleteGroupEverywhere('rules', '/rules', id); },
     notifyDingtalk: function (id) {
