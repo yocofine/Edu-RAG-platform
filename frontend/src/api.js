@@ -1,29 +1,73 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
+const CSRF_STORAGE_KEY = 'edu_rag_csrf_token'
 
 function cookie(name) {
   const item = document.cookie.split('; ').find(row => row.startsWith(`${name}=`))
   return item ? decodeURIComponent(item.split('=').slice(1).join('=')) : ''
 }
 
-export async function request(path, options = {}) {
-  const headers = { ...(options.headers || {}) }
-  if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
-  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
-    headers['X-CSRF-Token'] = cookie('csrf_token')
+function rememberCsrf(value) {
+  if (!value) return
+  try { localStorage.setItem(CSRF_STORAGE_KEY, value) } catch {}
+}
+
+function clearCsrf() {
+  try { localStorage.removeItem(CSRF_STORAGE_KEY) } catch {}
+}
+
+function csrfToken() {
+  const fromCookie = cookie('csrf_token')
+  if (fromCookie) {
+    rememberCsrf(fromCookie)
+    return fromCookie
   }
-  const response = await fetch(API_BASE + path, { ...options, headers, credentials: 'include' })
-  const contentType = response.headers.get('content-type') || ''
-  const data = contentType.includes('json') ? await response.json() : await response.blob()
-  if (!response.ok) throw new Error(data.detail || data.message || '请求失败')
-  return data
+  try { return localStorage.getItem(CSRF_STORAGE_KEY) || '' } catch { return '' }
+}
+
+async function refreshCsrf() {
+  const response = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.detail || '登录已失效，请重新登录')
+  rememberCsrf(data.csrf_token)
+  return data.csrf_token || ''
+}
+
+export async function request(path, options = {}) {
+  const execute = async (retried = false) => {
+    const headers = { ...(options.headers || {}) }
+    if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
+    if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
+      headers['X-CSRF-Token'] = csrfToken()
+    }
+    const response = await fetch(API_BASE + path, { ...options, headers, credentials: 'include' })
+    const contentType = response.headers.get('content-type') || ''
+    const data = contentType.includes('json') ? await response.json() : await response.blob()
+    if (!response.ok) {
+      if (!retried && response.status === 403 && data?.detail === 'CSRF校验失败') {
+        await refreshCsrf()
+        return execute(true)
+      }
+      throw new Error(data.detail || data.message || '请求失败')
+    }
+    return data
+  }
+  return execute()
 }
 
 export async function streamRequest(path, body, onEvent) {
-  const response = await fetch(API_BASE + path, {
+  const send = () => fetch(API_BASE + path, {
     method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('csrf_token') },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
     body: JSON.stringify(body),
   })
+  let response = await send()
+  if (response.status === 403) {
+    const error = await response.clone().json().catch(() => ({}))
+    if (error.detail === 'CSRF校验失败') {
+      await refreshCsrf()
+      response = await send()
+    }
+  }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}))
     throw new Error(data.detail || data.message || '请求失败')
@@ -45,9 +89,19 @@ export async function streamRequest(path, body, onEvent) {
 
 export const api = {
   me: () => request('/auth/me'),
-  login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
-  register: (username, password) => request('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
-  logout: () => request('/auth/logout', { method: 'POST' }),
+  login: async (username, password) => {
+    const data = await request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+    rememberCsrf(data.csrf_token)
+    return data
+  },
+  register: async (username, password) => {
+    const data = await request('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) })
+    rememberCsrf(data.csrf_token)
+    return data
+  },
+  logout: async () => {
+    try { return await request('/auth/logout', { method: 'POST' }) } finally { clearCsrf() }
+  },
   changePassword: (oldPassword, newPassword) => request('/auth/password', { method: 'PUT', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) }),
   sections: () => request('/sections'),
   createSection: name => request('/sections', { method: 'POST', body: JSON.stringify({ name }) }),

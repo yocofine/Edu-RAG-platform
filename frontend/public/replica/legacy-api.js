@@ -38,12 +38,42 @@
   }
 
   var TOKEN_KEY = 'kb_token';
+  var CSRF_KEY = 'edu_rag_csrf_token';
 
   /* ============================ 基础工具 ============================ */
 
   function cookie(name) {
     var row = document.cookie.split('; ').find(function (item) { return item.indexOf(name + '=') === 0; });
     return row ? decodeURIComponent(row.split('=').slice(1).join('=')) : '';
+  }
+
+  function rememberCsrf(value) {
+    if (!value) return;
+    try { localStorage.setItem(CSRF_KEY, value); } catch (e) { /* ignore */ }
+  }
+
+  function clearCsrf() {
+    try { localStorage.removeItem(CSRF_KEY); } catch (e) { /* ignore */ }
+  }
+
+  function csrfToken() {
+    var value = cookie('csrf_token');
+    if (value) {
+      rememberCsrf(value);
+      return value;
+    }
+    try { return localStorage.getItem(CSRF_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function refreshCsrf() {
+    return fetch(API_BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (data) {
+          if (!response.ok) throw apiError(data, response.status);
+          rememberCsrf(data.csrf_token);
+          return data.csrf_token || '';
+        });
+      });
   }
 
   function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
@@ -57,8 +87,9 @@
     fetch(API_BASE + '/auth/logout', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'X-CSRF-Token': cookie('csrf_token') }
+      headers: { 'X-CSRF-Token': csrfToken() }
     }).catch(function () { /* 退出接口失败不影响本地登出 */ });
+    clearCsrf();
   }
 
   function apiError(data, status) {
@@ -70,19 +101,27 @@
 
   function request(path, options) {
     options = options || {};
-    var headers = Object.assign({}, options.headers || {});
-    if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-    var method = (options.method || 'GET').toUpperCase();
-    if (method !== 'GET' && method !== 'HEAD') headers['X-CSRF-Token'] = cookie('csrf_token');
-    return fetch(API_BASE + path, Object.assign({}, options, { headers: headers, credentials: 'include' }))
-      .then(function (response) {
-        var type = response.headers.get('content-type') || '';
-        var parsed = type.indexOf('json') >= 0 ? response.json().catch(function () { return null; }) : Promise.resolve(null);
-        return parsed.then(function (data) {
-          if (!response.ok) throw apiError(data, response.status);
-          return data;
+    function execute(retried) {
+      var headers = Object.assign({}, options.headers || {});
+      if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+      var method = (options.method || 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD') headers['X-CSRF-Token'] = csrfToken();
+      return fetch(API_BASE + path, Object.assign({}, options, { headers: headers, credentials: 'include' }))
+        .then(function (response) {
+          var type = response.headers.get('content-type') || '';
+          var parsed = type.indexOf('json') >= 0 ? response.json().catch(function () { return null; }) : Promise.resolve(null);
+          return parsed.then(function (data) {
+            if (!response.ok) {
+              if (!retried && response.status === 403 && data && data.detail === 'CSRF校验失败') {
+                return refreshCsrf().then(function () { return execute(true); });
+              }
+              throw apiError(data, response.status);
+            }
+            return data;
+          });
         });
-      });
+    }
+    return execute(false);
   }
 
   /* 后端返回 ISO（有时带 +00:00，有时是 naive），原页面按 "YYYY-MM-DD HH:MM:SS" 处理。 */
@@ -151,7 +190,7 @@
      * 这里补一个占位值，真正的凭证是 access_token Cookie。 */
     login: function (username, password) {
       return request('/auth/login', { method: 'POST', body: JSON.stringify({ username: username, password: password }) })
-        .then(function (data) { setToken('cookie'); return { token: 'cookie', user: data.user }; });
+        .then(function (data) { rememberCsrf(data.csrf_token); setToken('cookie'); return { token: 'cookie', user: data.user }; });
     },
     register: function (username, password) {
       /* 原页面只校验「至少 4 位」，后端要求 8-128 位，这里提前给出可读的提示。 */
@@ -159,7 +198,7 @@
         return Promise.reject(new Error('密码至少需要 8 位（后端安全策略要求）'));
       }
       return request('/auth/register', { method: 'POST', body: JSON.stringify({ username: username, password: password }) })
-        .then(function (data) { setToken('cookie'); return { token: 'cookie', user: data.user }; });
+        .then(function (data) { rememberCsrf(data.csrf_token); setToken('cookie'); return { token: 'cookie', user: data.user }; });
     },
     me: function () { return request('/auth/me'); },
     changePassword: function (oldPassword, newPassword) {
@@ -514,7 +553,7 @@
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': cookie('csrf_token')
+          'X-CSRF-Token': csrfToken()
         },
         body: JSON.stringify({ query: query })
       });

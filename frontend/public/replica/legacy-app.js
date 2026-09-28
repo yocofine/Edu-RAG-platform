@@ -857,11 +857,16 @@
 
         function closeNewSectionModal() { document.getElementById('newSectionModal').style.display = 'none'; }
 
+        let sectionCreateBusy = false;
         async function confirmNewSection() {
             if (!isAdmin()) return;
+            if (sectionCreateBusy) return;
             const n = document.getElementById('newSectionNameInput').value.trim();
             if (!n) { showToast('请输入板块名称', 'error'); return; }
             if (MOCK_SECTIONS.some(s => s.name.toLowerCase() === n.toLowerCase())) { showToast('已存在同名板块', 'error'); return; }
+            const submitButton = document.querySelector('#newSectionModal .btn-primary');
+            sectionCreateBusy = true;
+            if (submitButton) { submitButton.disabled = true; submitButton.textContent = '创建中…'; }
             try {
                 await SectionAPI.create(n);
                 closeNewSectionModal();
@@ -871,6 +876,10 @@
                 updateBatchMoveSelect();
                 showToast(`板块"${n}"已创建`, 'success');
             } catch (err) { showToast(err.message || '创建板块失败', 'error'); }
+            finally {
+                sectionCreateBusy = false;
+                if (submitButton) { submitButton.disabled = false; submitButton.textContent = '创建'; }
+            }
         }
 
         // ==================== 话术库 - 左侧导航 ====================
