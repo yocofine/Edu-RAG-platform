@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         terminal = [
             JobStatus.published.value, JobStatus.failed.value,
-            JobStatus.needs_review.value, JobStatus.interrupted.value,
+            JobStatus.needs_review.value, JobStatus.interrupted.value, JobStatus.cancelled.value,
         ]
         db.execute(
             update(IngestionJob).where(IngestionJob.status.not_in(terminal)).values(

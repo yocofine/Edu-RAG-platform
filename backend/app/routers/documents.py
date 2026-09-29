@@ -21,7 +21,7 @@ from ..object_store import object_store
 from ..rate_limit import limit_upload
 from ..services.document_index import remove_document_chunks
 from ..schemas import BatchDocumentRequest, DocumentUpdateRequest, ParsedContentRequest
-from ..services.job_dispatcher import schedule_ingestion, schedule_reviewed_publish
+from ..services.job_dispatcher import cancel_job, schedule_ingestion, schedule_reviewed_publish
 from ..services.serial import serialized
 from qa_core.indexing.encoding import decode_bytes
 
@@ -163,18 +163,39 @@ def search_documents(
     return {"items": [serialize(doc, version) for doc, version in rows]}
 
 
+def _cancel_document_jobs(document_id: str, db: Session) -> list[str]:
+    jobs = db.scalars(
+        select(IngestionJob)
+        .join(DocumentVersion, IngestionJob.document_version_id == DocumentVersion.id)
+        .where(
+            DocumentVersion.document_id == document_id,
+            IngestionJob.status.not_in({JobStatus.published.value, JobStatus.failed.value, JobStatus.cancelled.value}),
+        )
+    ).all()
+    now = datetime.now(timezone.utc)
+    for job in jobs:
+        job.status = JobStatus.cancelled.value
+        job.error_message = "文件已删除，入库任务已取消"
+        job.finished_at = now
+    return [job.id for job in jobs]
+
+
 @router.post("/batch-delete", dependencies=[Depends(csrf_protected)])
-def batch_delete_documents(payload: BatchDocumentRequest, background_tasks: BackgroundTasks, user: User = Depends(admin_user), db: Session = Depends(get_db)):
+async def batch_delete_documents(payload: BatchDocumentRequest, background_tasks: BackgroundTasks, user: User = Depends(admin_user), db: Session = Depends(get_db)):
     deleted = 0
+    cancelled_job_ids: list[str] = []
     for document_id in dict.fromkeys(payload.ids):
         document = _editable_document(document_id, user, db)
         document.deleted_at = datetime.now(timezone.utc)
         versions = db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document.id)).all()
         for version in versions:
             background_tasks.add_task(remove_document_chunks, version.index_chunk_ids)
+        cancelled_job_ids.extend(_cancel_document_jobs(document.id, db))
         db.add(AuditLog(action="删除", target_type="文件", target_name=document.normalized_name, detail="批量操作，进入30天回收站", operator_id=user.id))
         deleted += 1
     db.commit()
+    for job_id in cancelled_job_ids:
+        cancel_job(job_id)
     return {"message": f"已删除{deleted}个文件", "count": deleted}
 
 
@@ -413,7 +434,7 @@ def preview(document_id: str, version_id: str | None = None, user: User = Depend
 
 
 @router.delete("/{document_id}", dependencies=[Depends(csrf_protected)])
-def recycle(document_id: str, background_tasks: BackgroundTasks, user: User = Depends(admin_user), db: Session = Depends(get_db)):
+async def recycle(document_id: str, background_tasks: BackgroundTasks, user: User = Depends(admin_user), db: Session = Depends(get_db)):
     document = db.get(Document, document_id)
     if not document:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -422,8 +443,11 @@ def recycle(document_id: str, background_tasks: BackgroundTasks, user: User = De
     document.deleted_at = datetime.now(timezone.utc)
     versions = db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document.id)).all()
     chunk_sets = [version.index_chunk_ids for version in versions]
+    cancelled_job_ids = _cancel_document_jobs(document.id, db)
     db.add(AuditLog(action="删除", target_type="文件", target_name=document.normalized_name, detail="进入30天回收站", operator_id=user.id))
     db.commit()
+    for job_id in cancelled_job_ids:
+        cancel_job(job_id)
     for chunk_ids in chunk_sets:
         background_tasks.add_task(remove_document_chunks, chunk_ids)
     return {"message": "文件已进入回收站"}

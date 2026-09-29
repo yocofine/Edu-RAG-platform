@@ -39,6 +39,7 @@ class JobStatus(str, Enum):
     needs_review = "needs_review"
     failed = "failed"
     interrupted = "interrupted"
+    cancelled = "cancelled"
 
 
 class User(Base):

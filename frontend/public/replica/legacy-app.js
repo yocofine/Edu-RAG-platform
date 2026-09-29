@@ -80,7 +80,8 @@
             ocr_processing: 'OCR 识别', mineru_parsing: '解析复杂版面', table_normalizing: '整理表格',
             image_analyzing: '识别图片内容', quality_checking: '检查解析质量',
             converting_preview: '生成预览', chunking: '切分知识块', indexing: '生成向量并写入索引',
-            published: '入库完成', needs_review: '等待人工复核', failed: '处理失败', interrupted: '任务中断'
+            published: '入库完成', needs_review: '等待人工复核', failed: '处理失败', interrupted: '任务中断',
+            cancelled: '已取消'
         };
 
         function ingestionStatusLabel(status) {
@@ -644,15 +645,16 @@
 
         function renderIngestionCards(jobs) {
             if (!jobs.length) return '';
-            return `<div class="file-grid">${jobs.map(job => `
-                <div class="file-card ingestion-file-card" data-status="${escapeHTML(job.status || '')}">
+            return `<div class="file-grid">${jobs.map(job => { const documentId = job.document_id || ''; return `
+                <div class="file-card ingestion-file-card${APP_STATE.selectedItems.has(documentId)?' selected':''}" data-file-id="${escapeHTML(documentId)}" data-status="${escapeHTML(job.status || '')}">
+                    ${isAdmin()&&documentId?`<input type="checkbox" class="file-checkbox" ${APP_STATE.selectedItems.has(documentId)?'checked':''} aria-label="选择 ${escapeHTML(job.file_name || '入库文件')}" onclick="event.stopPropagation();toggleFileSelect('${escapeHTML(documentId)}')">`:''}
                     <span class="card-icon">⏳</span>
                     <span class="card-name">${escapeHTML(job.file_name || '正在处理的文件')}</span>
                     <span class="card-meta">${escapeHTML(job.uploader || '')} · ${escapeHTML(formatFileSize(job.size_bytes))}</span>
-                    <span class="card-tags"><span class="tag">${escapeHTML(job.file_type || '文件')}</span><span class="tag section-tag">正在入库</span></span>
+                    <span class="card-tags"><span class="tag">${escapeHTML(job.file_type || '文件')}</span><span class="tag section-tag">${escapeHTML(ingestionStatusLabel(job.status))}</span></span>
                     ${renderIngestionProgress(job)}
                     ${job.preview_available ? `<button type="button" class="ingestion-preview" onclick="event.stopPropagation();previewCitationSource('${escapeHTML(job.document_id)}','${escapeHTML(job.document_version_id)}','${escapeHTML(job.file_name || '文件')}',null)">预览当前文件</button>` : '<small class="ingestion-preview-hint">预览生成后可打开</small>'}
-                </div>`).join('')}</div>`;
+                </div>`;}).join('')}</div>`;
         }
 
         function handleFileClick(fid, e) { if (isAdmin() && (e.ctrlKey || e.metaKey)) { e.preventDefault(); toggleFileSelect(fid); } else { previewFile(fid); } }

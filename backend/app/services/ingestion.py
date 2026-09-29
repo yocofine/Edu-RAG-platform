@@ -66,6 +66,8 @@ async def _set_status(job_id: str, version_id: str, status: JobStatus, progress:
         version = db.get(DocumentVersion, version_id)
         if not job or not version:
             return
+        if job.status == JobStatus.cancelled.value:
+            raise asyncio.CancelledError
         job.status = status.value
         job.progress = progress
         version.ingestion_status = status.value

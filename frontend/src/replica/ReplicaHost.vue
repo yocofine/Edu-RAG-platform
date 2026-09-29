@@ -115,7 +115,7 @@ onMounted(async () => {
       })
     }
     if (disposed) return
-    await loadScript('/replica/legacy-app.js?v=20260929-startup-timeout') // 原页面逻辑，末尾会自行调用 init()
+    await loadScript('/replica/legacy-app.js?v=20260929-select-interrupted') // 原页面逻辑，末尾会自行调用 init()
     const submitButton = host.value?.querySelector('#authSubmitBtn')
     if (submitButton) {
       submitButton.disabled = false

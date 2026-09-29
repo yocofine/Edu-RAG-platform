@@ -127,7 +127,12 @@ async def test_dingtalk_robot_settings(
 
 @router.get("/ingestion-jobs")
 def ingestion_jobs(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    query = select(IngestionJob).join(DocumentVersion, IngestionJob.document_version_id == DocumentVersion.id)
+    query = (
+        select(IngestionJob)
+        .join(DocumentVersion, IngestionJob.document_version_id == DocumentVersion.id)
+        .join(Document, DocumentVersion.document_id == Document.id)
+        .where(Document.deleted_at.is_(None))
+    )
     if user.role != "admin":
         query = query.where(DocumentVersion.uploader_id == user.id)
     items = db.scalars(query.order_by(IngestionJob.created_at.desc()).limit(100)).all()

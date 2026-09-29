@@ -40,6 +40,16 @@ def schedule_reviewed_publish(job_id: str) -> bool:
     return _schedule(f"reviewed:{job_id}", lambda: publish_reviewed_content(job_id))
 
 
+def cancel_job(job_id: str) -> bool:
+    cancelled = False
+    for prefix in ("ingestion", "reviewed"):
+        task = _tasks.pop(f"{prefix}:{job_id}", None)
+        if task and not task.done():
+            task.cancel()
+            cancelled = True
+    return cancelled
+
+
 async def shutdown_jobs() -> None:
     tasks = list(_tasks.values())
     for task in tasks:
