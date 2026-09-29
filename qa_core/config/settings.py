@@ -82,10 +82,14 @@ class Settings(BaseSettings):
     # Embedding 后端：local=本地 BGE；api=OpenAI 兼容 /embeddings 接口。
     embedding_backend: str = Field(default="local", validation_alias="EMBEDDING_BACKEND")
     embedding_model_path: str = Field(default=str(PROJECT_ROOT / "models" / "bge-m3"), validation_alias="EMBEDDING_MODEL_PATH")
-    embedding_api_base_url: str = Field(default="", validation_alias="EMBEDDING_API_BASE_URL")
+    embedding_api_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        validation_alias="EMBEDDING_API_BASE_URL",
+    )
     embedding_api_key: str = Field(default="", validation_alias="EMBEDDING_API_KEY")
-    embedding_api_model: str = Field(default="BAAI/bge-m3", validation_alias="EMBEDDING_API_MODEL")
+    embedding_api_model: str = Field(default="text-embedding-v4", validation_alias="EMBEDDING_API_MODEL")
     embedding_api_dimension: int = Field(default=1024, validation_alias="EMBEDDING_API_DIMENSION")
+    embedding_api_send_dimensions: bool = Field(default=True, validation_alias="EMBEDDING_API_SEND_DIMENSIONS")
     embedding_api_batch_size: int = Field(default=16, validation_alias="EMBEDDING_API_BATCH_SIZE")
     embedding_api_timeout: float = Field(default=60.0, validation_alias="EMBEDDING_API_TIMEOUT")
     embedding_api_max_retries: int = Field(default=3, validation_alias="EMBEDDING_API_MAX_RETRIES")

@@ -33,6 +33,7 @@ class ApiEmbeddings:
         api_key: str,
         model: str,
         dimension: int = 1024,
+        send_dimensions: bool = True,
         batch_size: int = 16,
         timeout: float = 60.0,
         max_retries: int = 3,
@@ -42,6 +43,7 @@ class ApiEmbeddings:
         self.api_key = api_key
         self.model = model
         self.dimension = max(int(dimension), 1)
+        self.send_dimensions = bool(send_dimensions)
         self.batch_size = max(int(batch_size), 1)
         self.timeout = max(float(timeout), 1.0)
         self.max_retries = max(int(max_retries), 1)
@@ -52,7 +54,13 @@ class ApiEmbeddings:
         return [value / norm for value in vector] if norm else vector
 
     def _request(self, texts: list[str]) -> list[list[float]]:
-        payload = {"model": self.model, "input": texts}
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "input": texts,
+            "encoding_format": "float",
+        }
+        if self.send_dimensions:
+            payload["dimensions"] = self.dimension
         request = urllib.request.Request(
             self.endpoint,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -137,6 +145,7 @@ def get_embeddings():
             api_key=api_key,
             model=settings.embedding_api_model,
             dimension=settings.embedding_api_dimension,
+            send_dimensions=settings.embedding_api_send_dimensions,
             batch_size=settings.embedding_api_batch_size,
             timeout=settings.embedding_api_timeout,
             max_retries=settings.embedding_api_max_retries,
