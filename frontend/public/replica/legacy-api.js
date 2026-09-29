@@ -135,6 +135,46 @@
     return execute(false);
   }
 
+  function uploadWithProgress(path, form, onProgress, retried) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', API_BASE + path, true);
+      xhr.withCredentials = true;
+      var token = csrfToken();
+      if (token) xhr.setRequestHeader('X-CSRF-Token', token);
+      xhr.upload.onprogress = function (event) {
+        if (!event.lengthComputable || typeof onProgress !== 'function') return;
+        onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percent: Math.min(99, Math.round(event.loaded / Math.max(event.total, 1) * 100))
+        });
+      };
+      xhr.onload = function () {
+        var data = null;
+        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (e) { data = {}; }
+        var csrfFailed = xhr.status === 403 && data && data.detail === 'CSRF校验失败';
+        if (!retried && (xhr.status === 401 || csrfFailed)) {
+          refreshCsrf()
+            .then(function () { return uploadWithProgress(path, form, onProgress, true); })
+            .then(resolve, reject);
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(apiError(data, xhr.status));
+          return;
+        }
+        if (typeof onProgress === 'function') {
+          onProgress({ loaded: 1, total: 1, percent: 100 });
+        }
+        resolve(data);
+      };
+      xhr.onerror = function () { reject(new Error('上传连接中断，请检查网络后重试')); };
+      xhr.onabort = function () { reject(new Error('上传已取消')); };
+      xhr.send(form);
+    });
+  }
+
   /* 后端返回 ISO（有时带 +00:00，有时是 naive），原页面按 "YYYY-MM-DD HH:MM:SS" 处理。 */
   function stamp(value) {
     if (!value) return '';
@@ -286,12 +326,12 @@
     },
     /* 原页面传的 FormData 字段是 file / sectionId / title / tags，
      * 后端要 file / section_id / tags（标题由文件名决定，后端不支持自定义标题）。 */
-    upload: function (formData) {
+    upload: function (formData, onProgress) {
       var form = new FormData();
       form.append('file', formData.get('file'));
       form.append('section_id', formData.get('sectionId') || '');
       form.append('tags', formData.get('tags') || '');
-      return request('/documents/upload', { method: 'POST', body: form });
+      return uploadWithProgress('/documents/upload', form, onProgress, false);
     },
     download: function (id) {
       var document_ = findDocument(id);

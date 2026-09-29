@@ -8,7 +8,7 @@ from ..deps import admin_user, csrf_protected, current_user
 from ..models import AuditLog, Document, DocumentVersion, IngestionJob, RuleItem, ScriptItem, Section, User
 from ..schemas import DingTalkSettingsRequest
 from ..services.dingtalk import send_test_notification
-from ..services.ingestion import process_ingestion
+from ..services.job_dispatcher import schedule_ingestion
 from ..services.system_settings import get_dingtalk_settings, save_dingtalk_settings
 
 
@@ -153,9 +153,8 @@ def ingestion_jobs(user: User = Depends(current_user), db: Session = Depends(get
 
 
 @router.post("/ingestion-jobs/{job_id}/retry", dependencies=[Depends(csrf_protected)])
-def retry_ingestion(
+async def retry_ingestion(
     job_id: str,
-    background_tasks: BackgroundTasks,
     user: User = Depends(admin_user),
     db: Session = Depends(get_db),
 ):
@@ -172,7 +171,7 @@ def retry_ingestion(
     job.error_message = None
     job.retry_count += 1
     db.commit()
-    background_tasks.add_task(process_ingestion, job.id)
+    schedule_ingestion(job.id)
     return {"message": "任务已重新排队"}
 
 

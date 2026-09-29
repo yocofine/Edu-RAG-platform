@@ -96,11 +96,11 @@ onMounted(async () => {
     removeResponsiveHandlers = installResponsiveNavigation()
     removeAuthSubmitGuard = installAuthSubmitGuard()
 
-    await loadScript('/replica/legacy-api.js?v=20260929-serial-ingestion') // 定义 AuthAPI / FileAPI 等全局对象
+    await loadScript('/replica/legacy-api.js?v=20260929-upload-progress') // 定义 AuthAPI / FileAPI 等全局对象
     if (disposed) return
     if (window.ReplicaAuth?.bootstrap) await window.ReplicaAuth.bootstrap()  // 让已有的 Cookie 会话可以自动登录
     if (disposed) return
-    await loadScript('/replica/legacy-app.js?v=20260929-serial-ingestion') // 原页面逻辑，末尾会自行调用 init()
+    await loadScript('/replica/legacy-app.js?v=20260929-upload-progress') // 原页面逻辑，末尾会自行调用 init()
     const submitButton = host.value?.querySelector('#authSubmitBtn')
     if (submitButton) {
       submitButton.disabled = false

@@ -21,7 +21,7 @@ from ..object_store import object_store
 from ..rate_limit import limit_upload
 from ..services.document_index import remove_document_chunks
 from ..schemas import BatchDocumentRequest, DocumentUpdateRequest, ParsedContentRequest
-from ..services.ingestion import process_ingestion, publish_reviewed_content
+from ..services.job_dispatcher import schedule_ingestion, schedule_reviewed_publish
 from ..services.serial import serialized
 from qa_core.indexing.encoding import decode_bytes
 
@@ -195,7 +195,6 @@ def batch_move_documents(payload: BatchDocumentRequest, user: User = Depends(adm
 @router.post("/upload", status_code=202, dependencies=[Depends(csrf_protected), Depends(limit_upload)])
 @serialized("edu_rag_upload", timeout_seconds=3600)
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     section_id: str = Form(...),
     tags: str = Form(default=""),
@@ -258,7 +257,7 @@ async def upload_document(
     db.add(AuditLog(action="上传", target_type="文件", target_name=version.file_name, detail=f"v{version_no}", operator_id=user.id))
     db.commit()
     await event_hub.broadcast({"type": "document_uploaded", "document": serialize(document, version)})
-    background_tasks.add_task(process_ingestion, job.id)
+    schedule_ingestion(job.id)
     return {"document": serialize(document, version), "job_id": job.id}
 
 
@@ -335,7 +334,7 @@ def update_parsed_content(document_id: str, payload: ParsedContentRequest, versi
 
 
 @router.post("/{document_id}/publish", status_code=202, dependencies=[Depends(csrf_protected)])
-def publish_reviewed(document_id: str, background_tasks: BackgroundTasks, version_id: str | None = None, user: User = Depends(admin_user), db: Session = Depends(get_db)):
+async def publish_reviewed(document_id: str, version_id: str | None = None, user: User = Depends(admin_user), db: Session = Depends(get_db)):
     document, version = _resolve_version(document_id, version_id, db)
     if user.role != "admin" and document.owner_id != user.id:
         raise HTTPException(status_code=403, detail="无权限发布")
@@ -345,7 +344,7 @@ def publish_reviewed(document_id: str, background_tasks: BackgroundTasks, versio
         raise HTTPException(status_code=409, detail="没有可发布的解析内容") from exc
     job = IngestionJob(document_version_id=version.id, status=JobStatus.queued.value)
     db.add(job); db.commit()
-    background_tasks.add_task(publish_reviewed_content, job.id)
+    schedule_reviewed_publish(job.id)
     return {"message": "已提交人工复核发布任务", "job_id": job.id}
 
 
@@ -353,7 +352,6 @@ def publish_reviewed(document_id: str, background_tasks: BackgroundTasks, versio
 async def rollback_version(
     document_id: str,
     version_id: str,
-    background_tasks: BackgroundTasks,
     # 回滚会新建一个版本并替换当前版本，属于写操作：普通用户只能查看/预览文件。
     user: User = Depends(admin_user),
     db: Session = Depends(get_db),
@@ -379,7 +377,7 @@ async def rollback_version(
     db.add(AuditLog(action="回滚", target_type="文件", target_name=version.file_name, detail=f"从v{source_version.version_no}生成v{next_no}", operator_id=user.id))
     db.commit()
     await event_hub.broadcast({"type": "document_uploaded", "document": serialize(document, version)})
-    background_tasks.add_task(process_ingestion, job.id)
+    schedule_ingestion(job.id)
     return {"document": serialize(document, version), "job_id": job.id}
 
 
@@ -434,7 +432,6 @@ def recycle(document_id: str, background_tasks: BackgroundTasks, user: User = De
 @router.post("/{document_id}/restore", status_code=202, dependencies=[Depends(csrf_protected)])
 async def restore(
     document_id: str,
-    background_tasks: BackgroundTasks,
     user: User = Depends(admin_user),
     db: Session = Depends(get_db),
 ):
@@ -451,5 +448,5 @@ async def restore(
     job = IngestionJob(document_version_id=version.id)
     db.add(job)
     db.commit()
-    background_tasks.add_task(process_ingestion, job.id)
+    schedule_ingestion(job.id)
     return {"message": "文件已恢复并重新入库", "job_id": job.id}

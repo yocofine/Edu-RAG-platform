@@ -1526,7 +1526,7 @@
                     const file = item.getAsFile();
                     if (file) {
                         APP_STATE.pendingUploadFiles = [file];
-                        document.getElementById('uploadPreview').innerHTML = `<div>${getFileIconFromType(file.type)} ${escapeHTML(file.name || '剪贴板图片')} (${(file.size/1024).toFixed(1)} KB)</div>`;
+                        renderUploadQueue();
                         showToast('已粘贴图片', 'success');
                     }
                     return;
@@ -1663,8 +1663,31 @@
         }
 
         function handleFileUpload(e) { APP_STATE.pendingUploadFiles = Array.from(e.target.files);
-            document.getElementById('uploadPreview').innerHTML = APP_STATE.pendingUploadFiles.map(f =>
-                `<div>${getFileIconFromType(f.type)} ${escapeHTML(f.name)} (${(f.size/1024).toFixed(1)} KB)</div>`).join(''); }
+            renderUploadQueue(); }
+
+        function renderUploadQueue() {
+            const preview = document.getElementById('uploadPreview');
+            preview.innerHTML = APP_STATE.pendingUploadFiles.map((file, index) => `
+                <div class="upload-queue-item" id="uploadQueueItem${index}">
+                    <div class="upload-queue-head">
+                        <span>${getFileIconFromType(file.type)} ${escapeHTML(file.name)}</span>
+                        <strong id="uploadQueuePercent${index}">等待上传</strong>
+                    </div>
+                    <div class="upload-queue-track"><i id="uploadQueueBar${index}"></i></div>
+                    <small id="uploadQueueStatus${index}">${formatFileSize(file.size)}</small>
+                </div>`).join('');
+        }
+
+        function updateUploadQueue(index, percent, status, state = '') {
+            const item = document.getElementById(`uploadQueueItem${index}`);
+            const label = document.getElementById(`uploadQueuePercent${index}`);
+            const bar = document.getElementById(`uploadQueueBar${index}`);
+            const detail = document.getElementById(`uploadQueueStatus${index}`);
+            if (item) item.dataset.state = state;
+            if (label) label.textContent = `${Math.max(0, Math.min(100, Number(percent || 0)))}%`;
+            if (bar) bar.style.transform = `scaleX(${Math.max(0, Math.min(100, Number(percent || 0))) / 100})`;
+            if (detail) detail.textContent = status;
+        }
 
         async function confirmUpload() {
             if (!isAdmin()) { showToast('仅管理员可上传文件', 'error'); return; }
@@ -1690,9 +1713,13 @@
                         formData.append('sectionId', sid);
                         formData.append('title', title);
                         formData.append('tags', '');
-                        await FileAPI.upload(formData);
+                        await FileAPI.upload(formData, progress => {
+                            updateUploadQueue(index, progress.percent, `正在上传·${formatFileSize(progress.loaded)} / ${formatFileSize(progress.total)}`, 'uploading');
+                        });
+                        updateUploadQueue(index, 100, '上传完成，已进入串行解析队列', 'queued');
                         okCount++;
                     } catch (err) {
+                        updateUploadQueue(index, 0, err.message || '上传失败', 'error');
                         showToast(`上传失败 ${f.name}: ${err.message}`, 'error');
                     }
                 }
@@ -1701,12 +1728,14 @@
                 if (submitButton) { submitButton.disabled = false; submitButton.textContent = '确认上传'; }
             }
             APP_STATE.pendingUploadFiles = [];
-            closeUploadModal();
             try { await loadAllData(); } catch (e) { /* loadAllData 内部已处理错误提示 */ }
             renderFilesLeftNav();
             renderFilesRight();
             updateStorage();
-            if (okCount > 0) showToast(`成功上传${okCount}个文件到"${sn}"`, 'success');
+            if (okCount > 0) {
+                showToast(`成功上传${okCount}个文件到"${sn}"，已进入串行解析队列`, 'success');
+                setTimeout(() => closeUploadModal(), 900);
+            }
         }
 
         // ==================== 聊天 ====================

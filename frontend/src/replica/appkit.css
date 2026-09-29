@@ -1609,6 +1609,69 @@ button:disabled {
   background: #f8fbff;
 }
 
+#uploadPreview {
+  display: grid;
+  gap: 8px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.upload-queue-item {
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.upload-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--font-xs);
+}
+
+.upload-queue-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-queue-head strong,
+.upload-queue-item small {
+  color: var(--text-secondary);
+  font-size: var(--font-xxs);
+  white-space: nowrap;
+}
+
+.upload-queue-track {
+  height: 4px;
+  margin: 7px 0 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e9f0;
+}
+
+.upload-queue-track i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 160ms ease;
+}
+
+.upload-queue-item[data-state="queued"] .upload-queue-track i {
+  background: var(--success);
+}
+
+.upload-queue-item[data-state="error"] .upload-queue-track i {
+  background: var(--danger);
+}
+
 .rich-editor {
   min-height: 128px;
   border: 1px solid var(--border-strong);

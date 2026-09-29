@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).warning("检索栈预热失败，将按需懒加载：%s", exc)
     yield
+    from .services.job_dispatcher import shutdown_jobs
+    await shutdown_jobs()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
