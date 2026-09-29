@@ -23,6 +23,29 @@ const host = ref(null)
 const failure = ref('')
 let disposed = false
 let removeResponsiveHandlers = () => {}
+let removeAuthSubmitGuard = () => {}
+
+function scrubCredentialQuery() {
+  const url = new URL(window.location.href)
+  let changed = false
+  for (const key of ['username', 'password', 'password_confirmation']) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key)
+      changed = true
+    }
+  }
+  if (changed) window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+}
+
+function installAuthSubmitGuard() {
+  const form = host.value?.querySelector('#authForm')
+  const submit = event => {
+    event.preventDefault()
+    if (typeof window.handleAuth === 'function') window.handleAuth(event)
+  }
+  form?.addEventListener('submit', submit)
+  return () => form?.removeEventListener('submit', submit)
+}
 
 function setMobileNavigation(open) {
   const sidebar = host.value?.querySelector('#appSidebar')
@@ -68,14 +91,22 @@ function loadScript(src) {
 
 onMounted(async () => {
   try {
+    scrubCredentialQuery()
     host.value.innerHTML = markup
     removeResponsiveHandlers = installResponsiveNavigation()
+    removeAuthSubmitGuard = installAuthSubmitGuard()
 
-    await loadScript('/replica/legacy-api.js?v=20260928-groups-auth') // 定义 AuthAPI / FileAPI 等全局对象
+    await loadScript('/replica/legacy-api.js?v=20260929-safe-login') // 定义 AuthAPI / FileAPI 等全局对象
     if (disposed) return
     if (window.ReplicaAuth?.bootstrap) await window.ReplicaAuth.bootstrap()  // 让已有的 Cookie 会话可以自动登录
     if (disposed) return
-    await loadScript('/replica/legacy-app.js?v=20260928-groups-auth') // 原页面逻辑，末尾会自行调用 init()
+    await loadScript('/replica/legacy-app.js?v=20260929-safe-login') // 原页面逻辑，末尾会自行调用 init()
+    const submitButton = host.value?.querySelector('#authSubmitBtn')
+    if (submitButton) {
+      submitButton.disabled = false
+      submitButton.removeAttribute('aria-disabled')
+      submitButton.textContent = '登 录'
+    }
   } catch (error) {
     failure.value = error?.message || String(error)
   }
@@ -84,6 +115,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   disposed = true
   removeResponsiveHandlers()
+  removeAuthSubmitGuard()
 })
 </script>
 

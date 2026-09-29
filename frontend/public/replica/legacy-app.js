@@ -355,7 +355,7 @@
                     data = await AuthAPI.login(u, p);
                 } else {
                     if (document.getElementById('authConfirm').value !== p) { showToast('两次密码不一致', 'error'); return; }
-                    if (!u || p.length < 4) { showToast('请填写用户名和密码（至少4位）', 'error'); return; }
+                    if (!u || p.length < 8) { showToast('请填写用户名和密码（至少8位）', 'error'); return; }
                     data = await AuthAPI.register(u, p);
                     showToast('注册成功！', 'success');
                 }
