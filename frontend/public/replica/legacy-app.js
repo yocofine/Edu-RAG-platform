@@ -1641,6 +1641,7 @@
         }
 
         // ==================== 上传 ====================
+        let uploadBusy = false;
         function openUploadModal() { if (!isAdmin()) { showToast('仅管理员可上传文件', 'error'); return; } APP_STATE.pendingUploadFiles = [];
             document.getElementById('uploadPreview').innerHTML = '';
             document.getElementById('uploadInput').value = '';
@@ -1667,6 +1668,7 @@
 
         async function confirmUpload() {
             if (!isAdmin()) { showToast('仅管理员可上传文件', 'error'); return; }
+            if (uploadBusy) return;
             if (!APP_STATE.pendingUploadFiles.length) { showToast('请选择文件', 'error'); return; }
             const title = document.getElementById('uploadTitleInput').value.trim();
             if (!title) { showToast('请输入文件标题', 'error'); return; }
@@ -1674,18 +1676,29 @@
             if (!sid) { showToast('请先创建板块', 'error'); return; }
             const sn = getSectionName(sid);
             let okCount = 0;
-            for (const f of APP_STATE.pendingUploadFiles) {
-                try {
-                    const formData = new FormData();
-                    formData.append('file', f);
-                    formData.append('sectionId', sid);
-                    formData.append('title', title);
-                    formData.append('tags', '');
-                    await FileAPI.upload(formData);
-                    okCount++;
-                } catch (err) {
-                    showToast(`上传失败 ${f.name}: ${err.message}`, 'error');
+            const files = [...APP_STATE.pendingUploadFiles];
+            const submitButton = document.getElementById('uploadSubmitButton');
+            uploadBusy = true;
+            if (submitButton) submitButton.disabled = true;
+            try {
+                for (let index = 0; index < files.length; index++) {
+                    const f = files[index];
+                    if (submitButton) submitButton.textContent = `串行上传 ${index + 1}/${files.length}`;
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', f);
+                        formData.append('sectionId', sid);
+                        formData.append('title', title);
+                        formData.append('tags', '');
+                        await FileAPI.upload(formData);
+                        okCount++;
+                    } catch (err) {
+                        showToast(`上传失败 ${f.name}: ${err.message}`, 'error');
+                    }
                 }
+            } finally {
+                uploadBusy = false;
+                if (submitButton) { submitButton.disabled = false; submitButton.textContent = '确认上传'; }
             }
             APP_STATE.pendingUploadFiles = [];
             closeUploadModal();

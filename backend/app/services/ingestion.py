@@ -20,13 +20,11 @@ from ..events import event_hub
 from ..models import DocumentVersion, IngestionJob, JobStatus
 from ..object_store import object_store
 from .mineru import mineru_client
+from .serial import serial_operation
 from qa_core.indexing.encoding import decode_bytes
 
 
 settings = get_settings()
-_lock = asyncio.Lock()
-
-
 def detect_pdf_route(path: Path) -> str:
     """Choose native extraction, OCR, or MinerU at page-document level."""
     suffix = path.suffix.lower()
@@ -368,7 +366,7 @@ def _safe_extract(bundle: zipfile.ZipFile, destination: Path) -> None:
 
 
 async def process_ingestion(job_id: str) -> None:
-    async with _lock:
+    async with serial_operation("edu_rag_ingestion"):
         with SessionLocal() as db:
             job = db.get(IngestionJob, job_id)
             if not job:
@@ -591,7 +589,7 @@ async def process_ingestion(job_id: str) -> None:
 
 
 async def publish_reviewed_content(job_id: str) -> None:
-    async with _lock:
+    async with serial_operation("edu_rag_ingestion"):
         with SessionLocal() as db:
             job = db.get(IngestionJob, job_id)
             version = db.get(DocumentVersion, job.document_version_id) if job else None

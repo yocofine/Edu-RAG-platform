@@ -239,7 +239,7 @@
             <div class="form-group"><label>所属板块</label><select id="uploadSectionSelect"></select></div>
             <div class="upload-zone" id="uploadZone" onclick="document.getElementById('uploadInput').click()"><span class="upload-icon">☁️</span>点击选择文件 或 Ctrl+V 粘贴图片</div>
             <input type="file" id="uploadInput" style="display:none;" multiple onchange="handleFileUpload(event)"><div id="uploadPreview" style="margin-top:10px;font-size:12px;color:var(--text-secondary);"></div>
-            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeUploadModal()">取消</button><button class="btn btn-success btn-sm" onclick="confirmUpload()">确认上传</button></div></div>
+            <div class="modal-actions"><button class="btn btn-ghost btn-sm" onclick="closeUploadModal()">取消</button><button class="btn btn-success btn-sm" id="uploadSubmitButton" onclick="confirmUpload()">确认上传</button></div></div>
     </div>
     <div class="modal-overlay" id="previewModal" style="display:none;" onclick="if(event.target===this)closePreviewModal()">
         <div class="modal" style="width:560px;"><h3 id="previewTitle">📄 文件预览</h3><div id="previewContent" style="text-align:center;padding:16px;"></div>

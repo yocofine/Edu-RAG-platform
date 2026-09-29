@@ -22,6 +22,7 @@ from ..rate_limit import limit_upload
 from ..services.document_index import remove_document_chunks
 from ..schemas import BatchDocumentRequest, DocumentUpdateRequest, ParsedContentRequest
 from ..services.ingestion import process_ingestion, publish_reviewed_content
+from ..services.serial import serialized
 from qa_core.indexing.encoding import decode_bytes
 
 
@@ -192,6 +193,7 @@ def batch_move_documents(payload: BatchDocumentRequest, user: User = Depends(adm
 
 
 @router.post("/upload", status_code=202, dependencies=[Depends(csrf_protected), Depends(limit_upload)])
+@serialized("edu_rag_upload", timeout_seconds=3600)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),

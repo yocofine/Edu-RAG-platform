@@ -172,26 +172,7 @@
     return '文档';
   }
 
-  /* 后端没有「话术组 / 规则组」表，组就是内容上的 group_name 字符串。
-   * 为了支持「新建空分组」，额外在 localStorage 里登记尚未有内容的分组名。 */
-  var GROUP_KEYS = { scripts: 'kb_replica_script_groups', rules: 'kb_replica_rule_groups' };
-
-  function readLocalGroups(kind) {
-    try { return JSON.parse(localStorage.getItem(GROUP_KEYS[kind]) || '[]'); } catch (e) { return []; }
-  }
-  function writeLocalGroups(kind, names) {
-    try { localStorage.setItem(GROUP_KEYS[kind], JSON.stringify(names)); } catch (e) { /* 忽略 */ }
-  }
-  function addLocalGroup(kind, name) {
-    var names = readLocalGroups(kind);
-    if (name && names.indexOf(name) < 0) { names.push(name); writeLocalGroups(kind, names); }
-  }
-  function renameLocalGroup(kind, from, to) {
-    writeLocalGroups(kind, readLocalGroups(kind).map(function (name) { return name === from ? to : name; }));
-  }
-  function dropLocalGroup(kind, name) {
-    writeLocalGroups(kind, readLocalGroups(kind).filter(function (item) { return item !== name; }));
-  }
+  /* 分组由后端 content_groups 表持久化，group_name 作为内容的稳定关联键。 */
   function fallbackGroup(kind) { return kind === 'rules' ? '通知规则' : '默认分组'; }
 
   /* ============================ 认证 ============================ */
@@ -332,7 +313,7 @@
     }
   };
 
-  /* ============================ 话术组（由 group_name 派生） ============================ */
+  /* ============================ 话术组 / 规则组 ============================ */
 
   function mapContent(item) {
     var group = item.group_name || fallbackGroup('scripts');
