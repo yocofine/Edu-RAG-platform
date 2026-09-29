@@ -147,6 +147,7 @@
       var xhr = new XMLHttpRequest();
       xhr.open('POST', API_BASE + path, true);
       xhr.withCredentials = true;
+      xhr.timeout = 120000;
       var token = csrfToken();
       if (token) xhr.setRequestHeader('X-CSRF-Token', token);
       xhr.upload.onprogress = function (event) {
@@ -154,7 +155,7 @@
         onProgress({
           loaded: event.loaded,
           total: event.total,
-          percent: Math.min(99, Math.round(event.loaded / Math.max(event.total, 1) * 100))
+          percent: Math.min(100, Math.round(event.loaded / Math.max(event.total, 1) * 100))
         });
       };
       xhr.onload = function () {
@@ -177,6 +178,7 @@
         resolve(data);
       };
       xhr.onerror = function () { reject(new Error('上传连接中断，请检查网络后重试')); };
+      xhr.ontimeout = function () { reject(new Error('文件已发送，但服务器超过 2 分钟未确认，请刷新文件列表确认是否已入队')); };
       xhr.onabort = function () { reject(new Error('上传已取消')); };
       xhr.send(form);
     });

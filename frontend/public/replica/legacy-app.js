@@ -73,6 +73,8 @@
         let MOCK_FAQS = [];
         let ingestionSocket = null;
         let ingestionReconnectTimer = null;
+        let ingestionPollTimer = null;
+        let ingestionReconnectDelay = 2500;
         let pendingQuickQuestion = '';
 
         const INGESTION_STATUS_LABELS = {
@@ -144,7 +146,12 @@
             clearTimeout(ingestionReconnectTimer);
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             ingestionSocket = new WebSocket(`${protocol}//${location.host}/api/v1/events/ws`);
-            ingestionSocket.onopen = () => ingestionSocket.send('ready');
+            ingestionSocket.onopen = () => {
+                ingestionReconnectDelay = 2500;
+                clearTimeout(ingestionPollTimer);
+                ingestionPollTimer = null;
+                ingestionSocket.send('ready');
+            };
             ingestionSocket.onmessage = async event => {
                 try {
                     const payload = JSON.parse(event.data);
@@ -157,8 +164,23 @@
             };
             ingestionSocket.onclose = () => {
                 ingestionSocket = null;
-                if (APP_STATE.isLoggedIn) ingestionReconnectTimer = setTimeout(connectIngestionEvents, 2500);
+                if (APP_STATE.isLoggedIn) {
+                    startIngestionPolling();
+                    ingestionReconnectTimer = setTimeout(connectIngestionEvents, ingestionReconnectDelay);
+                    ingestionReconnectDelay = Math.min(ingestionReconnectDelay * 2, 30000);
+                }
             };
+        }
+
+        function startIngestionPolling() {
+            if (ingestionPollTimer || !APP_STATE.isLoggedIn) return;
+            const poll = async () => {
+                ingestionPollTimer = null;
+                if (!APP_STATE.isLoggedIn || (ingestionSocket && ingestionSocket.readyState === WebSocket.OPEN)) return;
+                try { await refreshFileAndJobData(); } catch (error) { console.warn('轮询入库进度失败：', error); }
+                if (APP_STATE.isLoggedIn) ingestionPollTimer = setTimeout(poll, 3000);
+            };
+            ingestionPollTimer = setTimeout(poll, 1000);
         }
 
         function getUserByName(u) { return MOCK_USERS.find(x => x.username === u); }
@@ -402,6 +424,7 @@
                 clearToken();
                 MOCK_USERS = []; MOCK_SECTIONS = []; MOCK_FILES = []; MOCK_INGESTION_JOBS = []; MOCK_SCRIPT_GROUPS = []; MOCK_SCRIPTS = []; MOCK_RULE_GROUPS = []; MOCK_RULES = []; MOCK_FAQS = []; MOCK_LOGS = [];
                 if (ingestionSocket) { ingestionSocket.close(); ingestionSocket = null; }
+                clearTimeout(ingestionReconnectTimer); clearTimeout(ingestionPollTimer); ingestionPollTimer = null;
                 document.getElementById('authOverlay').classList.remove('hidden');
                 document.getElementById('authOverlay').removeAttribute('inert');
                 document.getElementById('appLayout').classList.remove('visible');
@@ -423,6 +446,7 @@
             APP_STATE.isLoggedIn = false;
             clearToken();
             if (ingestionSocket) { ingestionSocket.close(); ingestionSocket = null; }
+            clearTimeout(ingestionReconnectTimer); clearTimeout(ingestionPollTimer); ingestionPollTimer = null;
             document.getElementById('appLayout')?.classList.remove('visible');
             const overlay = document.getElementById('authOverlay');
             overlay?.classList.remove('hidden');
@@ -1708,7 +1732,7 @@
             try {
                 for (let index = 0; index < files.length; index++) {
                     const f = files[index];
-                    if (submitButton) submitButton.textContent = `串行上传 ${index + 1}/${files.length}`;
+                    if (submitButton) submitButton.textContent = '上传中';
                     try {
                         const formData = new FormData();
                         formData.append('file', f);
@@ -1716,7 +1740,10 @@
                         formData.append('title', title);
                         formData.append('tags', '');
                         await FileAPI.upload(formData, progress => {
-                            updateUploadQueue(index, progress.percent, `正在上传·${formatFileSize(progress.loaded)} / ${formatFileSize(progress.total)}`, 'uploading');
+                            const detail = progress.percent >= 100
+                                ? '文件已发送，正在等待服务器确认…'
+                                : `正在上传·${formatFileSize(progress.loaded)} / ${formatFileSize(progress.total)}`;
+                            updateUploadQueue(index, progress.percent, detail, 'uploading');
                         });
                         updateUploadQueue(index, 100, '上传完成，已进入串行解析队列', 'queued');
                         okCount++;

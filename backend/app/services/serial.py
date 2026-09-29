@@ -44,11 +44,16 @@ def _release_mysql_lock(connection, name: str) -> None:
 
 
 @asynccontextmanager
-async def serial_operation(name: str, timeout_seconds: int = 21600) -> AsyncIterator[None]:
+async def serial_operation(
+    name: str,
+    timeout_seconds: int = 21600,
+    *,
+    distributed: bool = True,
+) -> AsyncIterator[None]:
     """Serialize work locally and, on MySQL, across API processes/pods."""
     lock = _LOCAL_LOCKS.setdefault(name, asyncio.Lock())
     async with lock:
-        if engine.dialect.name not in {"mysql", "mariadb"}:
+        if not distributed or engine.dialect.name not in {"mysql", "mariadb"}:
             yield
             return
 
@@ -68,11 +73,11 @@ async def serial_operation(name: str, timeout_seconds: int = 21600) -> AsyncIter
             await asyncio.shield(asyncio.to_thread(_release_mysql_lock, connection, name))
 
 
-def serialized(name: str, timeout_seconds: int = 21600):
+def serialized(name: str, timeout_seconds: int = 21600, *, distributed: bool = True):
     def decorator(func: F) -> F:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            async with serial_operation(name, timeout_seconds):
+            async with serial_operation(name, timeout_seconds, distributed=distributed):
                 return await func(*args, **kwargs)
 
         return wrapper  # type: ignore[return-value]

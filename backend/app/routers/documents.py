@@ -214,7 +214,7 @@ def batch_move_documents(payload: BatchDocumentRequest, user: User = Depends(adm
 
 
 @router.post("/upload", status_code=202, dependencies=[Depends(csrf_protected), Depends(limit_upload)])
-@serialized("edu_rag_upload", timeout_seconds=3600)
+@serialized("edu_rag_upload", timeout_seconds=3600, distributed=False)
 async def upload_document(
     file: UploadFile = File(...),
     section_id: str = Form(...),
