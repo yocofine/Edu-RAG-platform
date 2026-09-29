@@ -109,11 +109,15 @@
   function request(path, options) {
     options = options || {};
     function execute(retried) {
+      var controller = new AbortController();
+      var timeout = setTimeout(function () { controller.abort(); }, 20000);
       var headers = Object.assign({}, options.headers || {});
       if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
       var method = (options.method || 'GET').toUpperCase();
       if (method !== 'GET' && method !== 'HEAD') headers['X-CSRF-Token'] = csrfToken();
-      return fetch(API_BASE + path, Object.assign({}, options, { headers: headers, credentials: 'include' }))
+      return fetch(API_BASE + path, Object.assign({}, options, {
+        headers: headers, credentials: 'include', signal: options.signal || controller.signal
+      }))
         .then(function (response) {
           var type = response.headers.get('content-type') || '';
           var parsed = type.indexOf('json') >= 0 ? response.json().catch(function () { return null; }) : Promise.resolve(null);
@@ -130,7 +134,10 @@
             }
             return data;
           });
-        });
+        }).catch(function (error) {
+          if (error && error.name === 'AbortError') throw new Error('请求超时，请检查服务状态后重试');
+          throw error;
+        }).finally(function () { clearTimeout(timeout); });
     }
     return execute(false);
   }

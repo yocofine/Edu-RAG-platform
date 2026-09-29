@@ -80,13 +80,24 @@ function installResponsiveNavigation() {
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const element = document.createElement('script')
+    const timer = window.setTimeout(() => {
+      element.remove()
+      reject(new Error(`加载 ${src} 超时，请刷新页面`))
+    }, 12000)
     element.src = src
     element.async = false
     element.dataset.replica = 'true'
-    element.addEventListener('load', () => resolve(), { once: true })
-    element.addEventListener('error', () => reject(new Error(`无法加载 ${src}`)), { once: true })
+    element.addEventListener('load', () => { window.clearTimeout(timer); resolve() }, { once: true })
+    element.addEventListener('error', () => { window.clearTimeout(timer); reject(new Error(`无法加载 ${src}`)) }, { once: true })
     document.body.appendChild(element)
   })
+}
+
+function settleWithin(promise, timeoutMs) {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => window.setTimeout(() => reject(new Error('会话恢复超时')), timeoutMs)),
+  ])
 }
 
 onMounted(async () => {
@@ -96,11 +107,15 @@ onMounted(async () => {
     removeResponsiveHandlers = installResponsiveNavigation()
     removeAuthSubmitGuard = installAuthSubmitGuard()
 
-    await loadScript('/replica/legacy-api.js?v=20260929-upload-progress') // 定义 AuthAPI / FileAPI 等全局对象
+    await loadScript('/replica/legacy-api.js?v=20260929-startup-timeout') // 定义 AuthAPI / FileAPI 等全局对象
     if (disposed) return
-    if (window.ReplicaAuth?.bootstrap) await window.ReplicaAuth.bootstrap()  // 让已有的 Cookie 会话可以自动登录
+    if (window.ReplicaAuth?.bootstrap) {
+      await settleWithin(window.ReplicaAuth.bootstrap(), 3000).catch(error => {
+        console.warn('自动恢复会话失败，已切换为手动登录：', error)
+      })
+    }
     if (disposed) return
-    await loadScript('/replica/legacy-app.js?v=20260929-upload-progress') // 原页面逻辑，末尾会自行调用 init()
+    await loadScript('/replica/legacy-app.js?v=20260929-startup-timeout') // 原页面逻辑，末尾会自行调用 init()
     const submitButton = host.value?.querySelector('#authSubmitBtn')
     if (submitButton) {
       submitButton.disabled = false
@@ -109,6 +124,11 @@ onMounted(async () => {
     }
   } catch (error) {
     failure.value = error?.message || String(error)
+    const submitButton = host.value?.querySelector('#authSubmitBtn')
+    if (submitButton) {
+      submitButton.disabled = true
+      submitButton.textContent = '登录资源加载失败，请刷新'
+    }
   }
 })
 
