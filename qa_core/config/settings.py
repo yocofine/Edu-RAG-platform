@@ -79,8 +79,16 @@ class Settings(BaseSettings):
     langsmith_project: str = Field(default="knowforge-rag-platform", validation_alias="LANGSMITH_PROJECT")
     langsmith_endpoint: str = Field(default="https://api.smith.langchain.com", validation_alias="LANGSMITH_ENDPOINT")
 
-    # 默认使用项目根目录 models 下的本地模型，路径缺失时直接报错
+    # Embedding 后端：local=本地 BGE；api=OpenAI 兼容 /embeddings 接口。
+    embedding_backend: str = Field(default="local", validation_alias="EMBEDDING_BACKEND")
     embedding_model_path: str = Field(default=str(PROJECT_ROOT / "models" / "bge-m3"), validation_alias="EMBEDDING_MODEL_PATH")
+    embedding_api_base_url: str = Field(default="", validation_alias="EMBEDDING_API_BASE_URL")
+    embedding_api_key: str = Field(default="", validation_alias="EMBEDDING_API_KEY")
+    embedding_api_model: str = Field(default="BAAI/bge-m3", validation_alias="EMBEDDING_API_MODEL")
+    embedding_api_dimension: int = Field(default=1024, validation_alias="EMBEDDING_API_DIMENSION")
+    embedding_api_batch_size: int = Field(default=16, validation_alias="EMBEDDING_API_BATCH_SIZE")
+    embedding_api_timeout: float = Field(default=60.0, validation_alias="EMBEDDING_API_TIMEOUT")
+    embedding_api_max_retries: int = Field(default=3, validation_alias="EMBEDDING_API_MAX_RETRIES")
     reranker_model_path: str = Field(default=str(PROJECT_ROOT / "models" / "bge-reranker-large"), validation_alias="RERANKER_MODEL_PATH")
     embedding_model_version: str = Field(default="bge-m3-local-v1", validation_alias="EMBEDDING_MODEL_VERSION")
     reranker_model_version: str = Field(default="bge-reranker-large-local-v1", validation_alias="RERANKER_MODEL_VERSION")

@@ -81,8 +81,15 @@ def validate_runtime_environment() -> dict[str, object]:
     if _is_placeholder(settings.admin_api_token):
         raise RuntimeError("ADMIN_API_TOKEN 未配置。管理接口必须显式设置令牌。")
 
-    _require_path("Embedding 模型目录", settings.embedding_model_path)
-    _require_path("Reranker 模型目录", settings.reranker_model_path)
+    if settings.embedding_backend.strip().lower() == "local":
+        _require_path("Embedding 模型目录", settings.embedding_model_path)
+    elif settings.embedding_backend.strip().lower() == "api":
+        if _is_placeholder(settings.embedding_api_key) or not settings.embedding_api_base_url.strip():
+            raise RuntimeError("Embedding API 未完整配置：请设置 EMBEDDING_API_BASE_URL 和 EMBEDDING_API_KEY")
+    else:
+        raise RuntimeError(f"EMBEDDING_BACKEND 仅支持 local/api：{settings.embedding_backend}")
+    if settings.rerank_backend.strip().lower() != "api" or settings.rerank_api_fallback_local:
+        _require_path("Reranker 模型目录", settings.reranker_model_path)
 
     if not Path(settings.scenario_config_dir).exists():
         raise RuntimeError(f"SCENARIO_CONFIG_DIR 不存在：{settings.scenario_config_dir}")
@@ -111,8 +118,9 @@ def validate_runtime_environment() -> dict[str, object]:
         "scenario_name": scenario.display_name,
         "milvus_uri": settings.milvus_uri,
         "mysql": f"{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}",
-        "embedding_model_path": settings.embedding_model_path,
-        "reranker_model_path": settings.reranker_model_path,
+        "embedding_backend": settings.embedding_backend,
+        "embedding_model": settings.embedding_api_model if settings.embedding_backend == "api" else settings.embedding_model_path,
+        "reranker_backend": settings.rerank_backend,
         "active_kb_version": active_version,
         "available_scenarios": [item.scenario_id for item in registry.list_scenarios()],
     }

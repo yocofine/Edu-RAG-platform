@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import time
 import urllib.error
 import urllib.request
 from functools import lru_cache
@@ -14,15 +16,87 @@ from typing import Any, Callable
 # 防止 transformers 将 SentencePiece 转 Tiktoken 失败导致崩溃，需在导入前设置
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-import torch
-from langchain_huggingface import HuggingFaceEmbeddings
-from sentence_transformers import CrossEncoder
-
 from qa_core.config.logging_config import get_logger
 from qa_core.config.settings import get_settings
 
 
 logger = get_logger(__name__)
+
+
+class ApiEmbeddings:
+    """OpenAI-compatible remote embedding client with batching and dimension checks."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        dimension: int = 1024,
+        batch_size: int = 16,
+        timeout: float = 60.0,
+        max_retries: int = 3,
+    ) -> None:
+        base = (base_url or "").rstrip("/")
+        self.endpoint = base if base.endswith("/embeddings") else f"{base}/embeddings"
+        self.api_key = api_key
+        self.model = model
+        self.dimension = max(int(dimension), 1)
+        self.batch_size = max(int(batch_size), 1)
+        self.timeout = max(float(timeout), 1.0)
+        self.max_retries = max(int(max_retries), 1)
+
+    @staticmethod
+    def _normalize(vector: list[float]) -> list[float]:
+        norm = math.sqrt(sum(value * value for value in vector))
+        return [value / norm for value in vector] if norm else vector
+
+    def _request(self, texts: list[str]) -> list[list[float]]:
+        payload = {"model": self.model, "input": texts}
+        request = urllib.request.Request(
+            self.endpoint,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                items = sorted(body.get("data") or [], key=lambda item: int(item.get("index", 0)))
+                vectors = [[float(value) for value in item.get("embedding") or []] for item in items]
+                if len(vectors) != len(texts):
+                    raise RuntimeError(f"Embedding API 返回数量异常：期望 {len(texts)}，实际 {len(vectors)}")
+                for vector in vectors:
+                    if len(vector) != self.dimension:
+                        raise RuntimeError(
+                            f"Embedding 维度不匹配：期望 {self.dimension}，实际 {len(vector)}"
+                        )
+                return [self._normalize(vector) for vector in vectors]
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:500]
+                last_error = RuntimeError(f"Embedding API HTTP {exc.code}：{detail}")
+                if exc.code not in {408, 429, 500, 502, 503, 504}:
+                    break
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+            if attempt + 1 < self.max_retries:
+                time.sleep(min(2 ** attempt, 4))
+        raise RuntimeError(f"Embedding API 调用失败：{last_error}") from last_error
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        values = [str(text or "") for text in texts]
+        vectors: list[list[float]] = []
+        for start in range(0, len(values), self.batch_size):
+            vectors.extend(self._request(values[start:start + self.batch_size]))
+        return vectors
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._request([str(text or "")])[0]
 
 
 def resolve_device() -> str:
@@ -32,6 +106,8 @@ def resolve_device() -> str:
     所以 CPU 是一等执行设备；CUDA 只是可有可无的加速，不是必要条件。
     这样设计避免了对 GPU 环境的硬依赖，降低部署门槛。
     """
+    import torch
+
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -44,6 +120,31 @@ def get_embeddings():
     """
     # 加载应用全局设置（embedding 模型路径等配置）
     settings = get_settings()
+    backend = str(getattr(settings, "embedding_backend", "local") or "local").strip().lower()
+    if backend == "api":
+        api_key = str(getattr(settings, "embedding_api_key", "") or "").strip()
+        base_url = str(getattr(settings, "embedding_api_base_url", "") or "").strip()
+        if not api_key or not base_url:
+            raise RuntimeError("EMBEDDING_BACKEND=api 时必须配置 EMBEDDING_API_KEY 和 EMBEDDING_API_BASE_URL")
+        logger.info(
+            "Embedding 后端已切换为远程 API：model=%s endpoint=%s dimension=%s",
+            settings.embedding_api_model,
+            base_url,
+            settings.embedding_api_dimension,
+        )
+        return ApiEmbeddings(
+            base_url=base_url,
+            api_key=api_key,
+            model=settings.embedding_api_model,
+            dimension=settings.embedding_api_dimension,
+            batch_size=settings.embedding_api_batch_size,
+            timeout=settings.embedding_api_timeout,
+            max_retries=settings.embedding_api_max_retries,
+        )
+    if backend != "local":
+        raise RuntimeError(f"不支持的 EMBEDDING_BACKEND：{backend}")
+    from langchain_huggingface import HuggingFaceEmbeddings
+
     model_path = Path(settings.embedding_model_path)
     if not model_path.exists():
         raise RuntimeError(f"Embedding model path does not exist: {model_path}")
@@ -63,6 +164,8 @@ def _get_local_reranker():
     与 get_embeddings 同理：CrossEncoder 权重文件通常在 1GB 以上，加载是进程级
     重操作。lru_cache 确保只加载一次，所有检索请求复用同一个重排模型实例。
     """
+    from sentence_transformers import CrossEncoder
+
     # 加载应用全局设置（reranker 模型路径等配置）
     settings = get_settings()
     model_path = Path(settings.reranker_model_path)
