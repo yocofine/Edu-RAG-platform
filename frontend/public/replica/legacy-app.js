@@ -220,10 +220,17 @@
                 }));
                 MOCK_INGESTION_JOBS = jobRes.jobs || [];
                 MOCK_FAQS = faqRes.faqs || [];
-                MOCK_SCRIPT_GROUPS = grpRes.groups.map(g => ({ id: g.id, name: g.name, icon: '💬', owner: g.owner, sort_order: g.sort_order }));
-                MOCK_SCRIPTS = scrRes.scripts.map(s => ({
+                const currentUserName = String(APP_STATE.userName || '').toLocaleLowerCase();
+                const privateScripts = scrRes.scripts.filter(s =>
+                    String(s.owner || '').toLocaleLowerCase() === currentUserName
+                );
+                const privateGroupNames = new Set(privateScripts.map(s => s.group_id));
+                MOCK_SCRIPT_GROUPS = grpRes.groups
+                    .filter(g => String(g.owner || '').toLocaleLowerCase() === currentUserName || privateGroupNames.has(g.id))
+                    .map(g => ({ id: g.id, name: g.name, icon: '💬', owner: g.owner, sort_order: g.sort_order }));
+                MOCK_SCRIPTS = privateScripts.map(s => ({
                     id: s.id, groupId: s.group_id, title: s.title, content: s.content || '',
-                    tags: (s.tags || '').split(',').filter(Boolean), keywords: [], summary: '', updatedAt: (s.created_at || '').split(' ')[0], owner: s.owner,
+                    tags: (s.tags || '').split(',').filter(Boolean), keywords: [], summary: '', updatedAt: (s.created_at || '').split(' ')[0], owner: s.owner, ownerId: s.ownerId,
                 }));
                 MOCK_RULE_GROUPS = rgrpRes.groups.map(g => ({ id: g.id, name: g.name, icon: '📢', owner: g.owner, sort_order: g.sort_order }));
                 MOCK_RULES = rulRes.rules.map(r => ({

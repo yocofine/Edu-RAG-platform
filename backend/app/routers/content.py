@@ -32,7 +32,8 @@ def serialize(item) -> dict:
     return {
         "id": item.id, "title": item.title, "content": item.content,
         "group_name": item.group_name, "tags": item.tags,
-        "owner": item.owner.username, "created_at": item.created_at, "updated_at": item.updated_at,
+        "owner": item.owner.username, "owner_id": item.owner_id,
+        "created_at": item.created_at, "updated_at": item.updated_at,
     }
 
 
@@ -69,6 +70,22 @@ def queue_rule_notification(background_tasks: BackgroundTasks, item: RuleItem, u
         operator=user.username,
     )
     return True
+
+
+@router.get("/scripts/private")
+def list_private_scripts(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """专用私有话术端点：不区分角色，只返回当前用户数据。"""
+    items = db.scalars(
+        select(ScriptItem).where(
+            ScriptItem.deleted_at.is_(None),
+            ScriptItem.owner_id == user.id,
+        ).order_by(ScriptItem.updated_at.desc())
+    ).all()
+    return {
+        "items": [serialize(item) for item in items],
+        "scope": "private",
+        "owner_id": user.id,
+    }
 
 
 @router.get("/{kind}")

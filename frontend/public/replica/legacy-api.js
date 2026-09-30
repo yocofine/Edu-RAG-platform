@@ -377,7 +377,8 @@
       summary: '',
       updatedAt: stamp(item.updated_at || item.created_at).split(' ')[0],
       created_at: stamp(item.created_at),
-      owner: item.owner
+      owner: item.owner,
+      ownerId: item.owner_id
     };
   }
 
@@ -450,6 +451,12 @@
   }
 
   var ScriptAPI = makeContentAPI('scripts', '/scripts');
+  ScriptAPI.list = function () {
+    return request('/scripts/private').then(function (data) {
+      if (data.scope !== 'private') throw new Error('话术隔离接口版本不匹配，请重建 API 容器');
+      return { scripts: (data.items || []).map(mapContent), scope: data.scope, ownerId: data.owner_id };
+    });
+  };
   var RuleAPI = Object.assign(makeContentAPI('rules', '/rules'), {
     listGroups: function () { return listDerivedGroups('rules'); },
     createGroup: function (name) {
