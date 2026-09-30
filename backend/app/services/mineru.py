@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -75,6 +77,23 @@ class MinerUClient:
         进度只取服务端返回的真实指标。服务端只回 status 时不上报虚假百分比，
         前端改用明确的不定进度状态。
         """
+        backend = (self.settings.mineru_backend or "api").strip().lower()
+        if backend == "api":
+            await self._parse_api(path, output_zip, ocr_only=ocr_only, on_progress=on_progress)
+            return
+        if backend == "local":
+            await self._parse_local(path, output_zip, ocr_only=ocr_only, on_progress=on_progress)
+            return
+        raise RuntimeError(f"不支持的 MINERU_BACKEND：{backend}")
+
+    async def _parse_local(
+        self,
+        path: Path,
+        output_zip: Path,
+        *,
+        ocr_only: bool,
+        on_progress: ProgressCallback | None,
+    ) -> None:
         timeout = httpx.Timeout(self.settings.mineru_timeout_seconds)
         async with httpx.AsyncClient(base_url=self.settings.mineru_url, timeout=timeout) as client:
             with path.open("rb") as handle:
@@ -115,6 +134,119 @@ class MinerUClient:
             result = await client.get(f"/tasks/{task_id}/result")
             result.raise_for_status()
             output_zip.write_bytes(result.content)
+
+    @staticmethod
+    def _api_data(payload: dict, operation: str) -> dict:
+        if int(payload.get("code", -1)) != 0:
+            raise RuntimeError(f"MinerU API {operation}失败：{payload.get('msg') or payload.get('code')}")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise RuntimeError(f"MinerU API {operation}返回缺少 data")
+        return data
+
+    async def _upload_file(self, client: httpx.AsyncClient, upload_url: str, path: Path) -> None:
+        async def chunks():
+            with path.open("rb") as handle:
+                while True:
+                    chunk = await asyncio.to_thread(handle.read, 1024 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        # 官方预签名地址要求 PUT 时不设置 Content-Type。
+        response = await client.put(
+            upload_url,
+            content=chunks(),
+            headers={"Content-Length": str(path.stat().st_size)},
+        )
+        response.raise_for_status()
+
+    async def _download_zip(self, client: httpx.AsyncClient, url: str, output_zip: Path) -> None:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            with output_zip.open("wb") as handle:
+                async for chunk in response.aiter_bytes(1024 * 1024):
+                    await asyncio.to_thread(handle.write, chunk)
+
+    async def _parse_api(
+        self,
+        path: Path,
+        output_zip: Path,
+        *,
+        ocr_only: bool,
+        on_progress: ProgressCallback | None,
+    ) -> None:
+        token = (self.settings.mineru_api_key or "").strip()
+        if not token:
+            raise RuntimeError("MINERU_BACKEND=api 但未配置 MINERU_API_KEY")
+        base_url = (self.settings.mineru_api_base_url or "https://mineru.net/api/v4").rstrip("/")
+        model_version = (self.settings.mineru_api_model_version or "vlm").strip()
+        if model_version not in {"pipeline", "vlm", "MinerU-HTML"}:
+            raise RuntimeError(f"MINERU_API_MODEL_VERSION 无效：{model_version}")
+        data_id = f"edu-rag-{uuid.uuid4().hex}"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        timeout = httpx.Timeout(
+            connect=30.0,
+            read=float(self.settings.mineru_timeout_seconds),
+            write=float(self.settings.mineru_timeout_seconds),
+            pool=30.0,
+        )
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            request_payload = {
+                "files": [{"name": path.name, "data_id": data_id, "is_ocr": bool(ocr_only)}],
+                "model_version": model_version,
+                "enable_formula": True,
+                "enable_table": True,
+                "language": "ch",
+            }
+            response = await client.post(f"{base_url}/file-urls/batch", headers=headers, json=request_payload)
+            response.raise_for_status()
+            task_data = self._api_data(response.json(), "申请上传链接")
+            batch_id = str(task_data.get("batch_id") or "").strip()
+            file_urls = task_data.get("file_urls") or []
+            if not batch_id or not file_urls:
+                raise RuntimeError("MinerU API 未返回 batch_id 或文件上传地址")
+            await self._upload_file(client, str(file_urls[0]), path)
+
+            deadline = time.monotonic() + float(self.settings.mineru_timeout_seconds)
+            poll_interval = max(float(self.settings.mineru_api_poll_interval_seconds), 0.5)
+            while True:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"MinerU API 解析超时（{self.settings.mineru_timeout_seconds} 秒）")
+                status_response = await client.get(
+                    f"{base_url}/extract-results/batch/{batch_id}",
+                    headers={"Authorization": f"Bearer {token}", "Accept": "*/*"},
+                )
+                status_response.raise_for_status()
+                status_data = self._api_data(status_response.json(), "查询任务")
+                results = status_data.get("extract_result") or []
+                result = next(
+                    (
+                        item for item in results
+                        if str(item.get("data_id") or "") == data_id
+                        or str(item.get("file_name") or "") == path.name
+                    ),
+                    results[0] if len(results) == 1 else None,
+                )
+                if not isinstance(result, dict):
+                    await asyncio.sleep(poll_interval)
+                    continue
+                state = str(result.get("state") or "").strip().lower()
+                if state == "done":
+                    zip_url = str(result.get("full_zip_url") or "").strip()
+                    if not zip_url:
+                        raise RuntimeError("MinerU API 任务已完成但缺少 full_zip_url")
+                    await self._download_zip(client, zip_url, output_zip)
+                    _notify(on_progress, 1, 1)
+                    return
+                if state == "failed":
+                    raise RuntimeError(result.get("err_msg") or "MinerU API 解析失败")
+                progress = result.get("extract_progress") or {}
+                completed = int(progress.get("extracted_pages") or 0)
+                total = int(progress.get("total_pages") or 0)
+                if total > 0:
+                    _notify(on_progress, completed, total)
+                await asyncio.sleep(poll_interval)
 
 
 mineru_client = MinerUClient()

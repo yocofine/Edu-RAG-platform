@@ -39,9 +39,14 @@ class Settings(BaseSettings):
     llm_intent_model: str = "qwen-plus"
     active_scenario_id: str = "education_kb"
 
+    mineru_backend: str = "api"
     mineru_url: str = "http://mineru:8000"
     mineru_enabled: bool = False
     mineru_timeout_seconds: int = 1800
+    mineru_api_base_url: str = "https://mineru.net/api/v4"
+    mineru_api_key: str = ""
+    mineru_api_model_version: str = "vlm"
+    mineru_api_poll_interval_seconds: float = 2.0
     # 用多模态模型给图片/流程图补文字说明，避免图内信息在检索里丢失
     image_analysis_enabled: bool = True
     image_analysis_model: str = ""

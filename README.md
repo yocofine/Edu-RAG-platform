@@ -107,10 +107,10 @@ http://127.0.0.1:3000
 Attu 已通过 Docker 内网预配置连接 `milvus:19530`。若页面要求手动填写连接地址，仍应填写
 `milvus:19530`，不要填写 `localhost:19530`；后者在 Attu 容器中指向 Attu 自己。
 
-默认启动 MinerU：带图片或扫描的 PDF、以及 Office 文档都会走 MinerU 解析，不再进入“等待复核”。
-首次启动会从 modelscope 下载 pipeline 模型，缓存保存在 mineru_cache 卷中；并发解析上限由
-MINERU_API_MAX_CONCURRENT_REQUESTS 控制，默认 5。若临时不需要解析能力，可在 .env 里设置
-MINERU_ENABLED=false，并用 docker compose stop mineru 停掉该服务。
+默认调用 MinerU 官方精准解析 API：带图片或扫描的 PDF、以及复杂 Office 文档会上传到
+`mineru.net` 并异步轮询结果，服务器不再加载 MinerU 模型。生产 `.env` 需设置
+`MINERU_BACKEND=api`、`MINERU_API_KEY`和 `MINERU_API_MODEL_VERSION=vlm`。本地 MinerU 仅作为回退方案，
+必须显式运行 `docker compose --profile local-mineru up -d mineru`才会启动。
 
 如果文件曾因编码、字体或解析器问题生成了旧结果，重建镜像后可在“AI分析中心/入库任务”中点击
 “重新解析”（已发布版本）或“重试”（失败、等待复核版本）；这会重新生成预览、解析文本和检索索引。
