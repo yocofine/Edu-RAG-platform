@@ -44,6 +44,24 @@ def require_write_permission(kind: str, user: User, item=None) -> None:
         raise HTTPException(status_code=403, detail="话术库已按用户隔离，无权限修改他人话术")
 
 
+def owned_item(kind: str, item_id: str, user: User, db: Session):
+    """话术直接在 SQL 层按 owner_id 取数，管理员也不例外。"""
+    if kind == "scripts":
+        return db.scalar(
+            select(ScriptItem).where(
+                ScriptItem.id == item_id,
+                ScriptItem.owner_id == user.id,
+                ScriptItem.deleted_at.is_(None),
+            )
+        )
+    return db.scalar(
+        select(RuleItem).where(
+            RuleItem.id == item_id,
+            RuleItem.deleted_at.is_(None),
+        )
+    )
+
+
 def drop_legacy_chunks(background_tasks: BackgroundTasks, kind: str, item) -> None:
     """清理历史遗留的话术/规则向量片段。
 
@@ -117,9 +135,8 @@ def create_item(kind: Literal["scripts", "rules"], payload: ContentRequest, back
 
 @router.put("/{kind}/{item_id}", dependencies=[Depends(csrf_protected)])
 def update_item(kind: Literal["scripts", "rules"], item_id: str, payload: ContentRequest, background_tasks: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    model = model_for(kind)
-    item = db.get(model, item_id)
-    if not item or item.deleted_at:
+    item = owned_item(kind, item_id, user, db)
+    if not item:
         raise HTTPException(status_code=404, detail="内容不存在")
     require_write_permission(kind, user, item)
     for key, value in payload.model_dump().items():
@@ -134,9 +151,8 @@ def update_item(kind: Literal["scripts", "rules"], item_id: str, payload: Conten
 
 @router.delete("/{kind}/{item_id}", dependencies=[Depends(csrf_protected)])
 def delete_item(kind: Literal["scripts", "rules"], item_id: str, background_tasks: BackgroundTasks, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    model = model_for(kind)
-    item = db.get(model, item_id)
-    if not item or item.deleted_at:
+    item = owned_item(kind, item_id, user, db)
+    if not item:
         raise HTTPException(status_code=404, detail="内容不存在")
     require_write_permission(kind, user, item)
     item.deleted_at = datetime.now(timezone.utc)
