@@ -439,6 +439,7 @@ def _parse_byte_range(value: str, total_size: int) -> tuple[int, int]:
 def _inline_headers(file_name: str, content_length: int) -> dict[str, str]:
     return {
         "Accept-Ranges": "bytes",
+        "X-Accel-Buffering": "no",
         "Content-Disposition": f"inline; filename*=UTF-8''{quote(file_name)}",
         "Content-Length": str(content_length),
         "Cache-Control": "private, max-age=300",
