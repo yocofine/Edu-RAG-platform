@@ -647,7 +647,7 @@
         function renderFileCards(files) {
             return `<div class="file-grid">${files.map(f=>{const s=getSectionById(f.sectionId);const canEditFile=isAdmin();const activeJob=activeJobForDocument(f.id);return`
                 <div class="file-card${APP_STATE.selectedItems.has(f.id)?' selected':''}" data-file-id="${f.id}"
-                     onclick="handleFileClick('${f.id}',event)" oncontextmenu="showFileCtxMenu(event,'${f.id}')" ondblclick="previewFile('${f.id}')">
+                     onclick="handleFileClick('${f.id}',event)" oncontextmenu="showFileCtxMenu(event,'${f.id}')">
                     ${isAdmin()?`<input type="checkbox" class="file-checkbox" ${APP_STATE.selectedItems.has(f.id)?'checked':''} onclick="event.stopPropagation();toggleFileSelect('${f.id}')">`:''}
                     <span class="card-icon">${getFileTypeIcon(f.iconType)}</span><span class="card-name">${escapeHTML(f.name)}</span>
                     <span class="card-meta">${f.size} · ${f.date}${!canEditFile?' · 🔒':''}</span>
@@ -741,6 +741,19 @@
             return `/api/v1/documents/${encodeURIComponent(file.id)}/${action}${version}`;
         }
 
+        let activePreviewUrl = '';
+
+        function mountPreviewContent(url, html) {
+            const overlay = document.getElementById('previewModal');
+            const content = document.getElementById('previewContent');
+            if (activePreviewUrl === url && overlay.style.display === 'flex') return false;
+            const currentFrame = content.querySelector('iframe');
+            if (currentFrame) currentFrame.src = 'about:blank';
+            content.innerHTML = html;
+            activePreviewUrl = url;
+            return true;
+        }
+
         function previewFile(fid) {
             const f = MOCK_FILES.find(item => item.id === fid);
             if (!f) return;
@@ -760,7 +773,7 @@
             }
             const size = f.size ? `<p>📦 大小：${escapeHTML(f.size)}</p>` : '';
             h += `<div class="preview-meta"><p><strong>📋 AI摘要：</strong>${escapeHTML(f.aiSummary || '暂无')}</p>${size}<p>📂 板块：${escapeHTML(getSectionName(f.sectionId))}</p><p>👤 上传者：${escapeHTML(f.owner)}</p></div>`;
-            document.getElementById('previewContent').innerHTML = h;
+            mountPreviewContent(previewUrl, h);
             document.getElementById('previewDownloadBtn').onclick = () => window.open(downloadUrl, '_blank', 'noopener');
             document.getElementById('previewModal').style.display = 'flex'; }
 
@@ -771,13 +784,23 @@
                 (page ? `#page=${page}` : '');
             const downloadUrl = `/api/v1/documents/${encodeURIComponent(documentId)}/download?version_id=${encodeURIComponent(versionId)}`;
             document.getElementById('previewTitle').textContent = `${fileName || '知识库资料'}${page ? ` · 第 ${page} 页` : ''}`;
-            document.getElementById('previewContent').innerHTML =
-                `<iframe class="citation-preview-frame" src="${previewUrl}" title="预览 ${escapeHTML(fileName || '知识库资料')}"></iframe>`;
+            mountPreviewContent(
+                previewUrl,
+                `<iframe class="citation-preview-frame" src="${previewUrl}" title="预览 ${escapeHTML(fileName || '知识库资料')}"></iframe>`
+            );
             document.getElementById('previewDownloadBtn').onclick = () => window.open(downloadUrl, '_blank', 'noopener');
             document.getElementById('previewModal').style.display = 'flex';
         }
 
-        function closePreviewModal() { document.getElementById('previewModal').style.display = 'none'; }
+        function closePreviewModal() {
+            const overlay = document.getElementById('previewModal');
+            const content = document.getElementById('previewContent');
+            overlay.style.display = 'none';
+            const frame = content.querySelector('iframe');
+            if (frame) frame.src = 'about:blank';
+            content.replaceChildren();
+            activePreviewUrl = '';
+        }
 
         async function downloadFile(fid) {
             const f = MOCK_FILES.find(f => f.id === fid);

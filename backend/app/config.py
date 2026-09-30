@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "edu-rag-documents"
     minio_secure: bool = False
+    # 浏览器可直接访问的 MinIO/OSS 兼容端点。它不能使用 compose 内网地址
+    # ``minio:9000``；未配置或未显式开启时，预览自动回退到受鉴权的 Range 代理。
+    minio_public_endpoint: str = ""
+    minio_public_secure: bool = True
+    preview_direct_enabled: bool = False
+    preview_url_expiry_seconds: int = 900
+    preview_stream_chunk_kb: int = 512
 
     dashscope_api_key: str = ""
     llm_base_url: str = Field(

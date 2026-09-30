@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
@@ -410,27 +410,133 @@ def download(document_id: str, version_id: str | None = None, user: User = Depen
     return Response(object_store.get(version.object_key), media_type=media, headers=headers)
 
 
+BYTE_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def _parse_byte_range(value: str, total_size: int) -> tuple[int, int]:
+    """解析浏览器常用的单段 bytes Range；多段 Range 明确返回 416。"""
+    match = BYTE_RANGE_RE.fullmatch(value.strip())
+    if not match or total_size <= 0:
+        raise ValueError("invalid range")
+    first, last = match.groups()
+    if not first and not last:
+        raise ValueError("empty range")
+    if not first:
+        suffix_length = int(last)
+        if suffix_length <= 0:
+            raise ValueError("invalid suffix range")
+        start = max(total_size - suffix_length, 0)
+        return start, total_size - 1
+    start = int(first)
+    if start >= total_size:
+        raise ValueError("range starts after object")
+    end = total_size - 1 if not last else min(int(last), total_size - 1)
+    if end < start:
+        raise ValueError("range ends before start")
+    return start, end
+
+
+def _inline_headers(file_name: str, content_length: int) -> dict[str, str]:
+    return {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f"inline; filename*=UTF-8''{quote(file_name)}",
+        "Content-Length": str(content_length),
+        "Cache-Control": "private, max-age=300",
+        "X-Content-Type-Options": "nosniff",
+    }
+
+
+def _text_preview_body(version: DocumentVersion) -> tuple[bytes, str]:
+    try:
+        return object_store.get(f"parsed/{version.id}/content.md"), "text/markdown"
+    except Exception:
+        # 解析任务尚未完成时也要保证文本预览不会把 GBK/ANSI 原始字节直接交给浏览器。
+        decoded = decode_bytes(object_store.get(version.object_key))
+        return decoded.text.encode("utf-8"), "text/plain"
+
+
+def _binary_preview_target(version: DocumentVersion) -> tuple[str, str, str]:
+    key = version.preview_object_key or version.object_key
+    media = "application/pdf" if version.preview_object_key else (
+        mimetypes.guess_type(version.file_name)[0] or "application/octet-stream"
+    )
+    file_name = f"{Path(version.file_name).stem}.pdf" if version.preview_object_key else version.file_name
+    return key, media, file_name
+
+
+@router.head("/{document_id}/preview")
+def preview_head(
+    document_id: str,
+    version_id: str | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    _, version = _resolve_version(document_id, version_id, db)
+    kind = preview_kind(version.file_type, bool(version.preview_object_key))
+    if kind == "none":
+        raise HTTPException(status_code=409, detail="该格式暂不支持在线预览，请下载后查看")
+    if kind == "text":
+        body, media = _text_preview_body(version)
+        return Response(status_code=200, media_type=media, headers=_inline_headers(version.file_name, len(body)))
+    key, media, file_name = _binary_preview_target(version)
+    object_stat = object_store.stat(key)
+    return Response(status_code=200, media_type=media, headers=_inline_headers(file_name, object_stat.size))
+
+
 @router.get("/{document_id}/preview")
-def preview(document_id: str, version_id: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def preview(
+    document_id: str,
+    request: Request,
+    version_id: str | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
     _, version = _resolve_version(document_id, version_id, db)
     kind = preview_kind(version.file_type, bool(version.preview_object_key))
     # 不可内联预览的格式（如尚未转出 PDF 的 Office 原件）不能把原始字节塞给 iframe，
     # 否则浏览器会当成下载。这里显式拒绝，让前端提示"下载后查看"。
     if kind == "none":
         raise HTTPException(status_code=409, detail="该格式暂不支持在线预览，请下载后查看")
-    if version.file_type in {"txt", "md", "csv"}:
-        try:
-            body = object_store.get(f"parsed/{version.id}/content.md")
-            media = "text/markdown"
-        except Exception:
-            # 解析任务尚未完成时也要保证文本预览不会把 GBK/ANSI 原始字节直接交给浏览器。
-            decoded = decode_bytes(object_store.get(version.object_key))
-            body = decoded.text.encode("utf-8")
-            media = "text/plain"
+    if kind == "text":
+        body, media = _text_preview_body(version)
         return Response(body, media_type=media, headers={"Content-Disposition": "inline"})
-    key = version.preview_object_key or version.object_key
-    media = "application/pdf" if version.preview_object_key else (mimetypes.guess_type(version.file_name)[0] or "application/octet-stream")
-    return Response(object_store.get(key), media_type=media, headers={"Content-Disposition": "inline"})
+
+    key, media, file_name = _binary_preview_target(version)
+    direct_url = object_store.presigned_get_url(key, content_type=media, file_name=file_name)
+    if direct_url:
+        return RedirectResponse(
+            direct_url,
+            status_code=307,
+            headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"},
+        )
+
+    object_stat = object_store.stat(key)
+    total_size = object_stat.size
+    range_header = request.headers.get("range")
+    if not range_header:
+        return StreamingResponse(
+            object_store.stream(key),
+            media_type=media,
+            headers=_inline_headers(file_name, total_size),
+        )
+
+    try:
+        start, end = _parse_byte_range(range_header, total_size)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=416,
+            detail="请求的文件区间不可用",
+            headers={"Accept-Ranges": "bytes", "Content-Range": f"bytes */{total_size}"},
+        )
+    length = end - start + 1
+    headers = _inline_headers(file_name, length)
+    headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
+    return StreamingResponse(
+        object_store.stream(key, offset=start, length=length),
+        status_code=206,
+        media_type=media,
+        headers=headers,
+    )
 
 
 @router.delete("/{document_id}", dependencies=[Depends(csrf_protected)])
