@@ -52,6 +52,8 @@
 
         function canDelete(owner) { return isAdmin() || owner === APP_STATE.userName; }
 
+        function ownsCurrentUser(owner) { return String(owner || '').toLocaleLowerCase() === String(APP_STATE.userName || '').toLocaleLowerCase(); }
+
         function debounce(fn, wait = 200) { let t = null; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), wait); }; }
         const debouncedRenderFiles = debounce(() => renderFilesRight());
         const debouncedRenderScripts = debounce(() => renderScriptsRight());
@@ -220,17 +222,14 @@
                 }));
                 MOCK_INGESTION_JOBS = jobRes.jobs || [];
                 MOCK_FAQS = faqRes.faqs || [];
-                const currentUserName = String(APP_STATE.userName || '').toLocaleLowerCase();
-                const privateScripts = scrRes.scripts.filter(s =>
-                    String(s.owner || '').toLocaleLowerCase() === currentUserName
-                );
+                const privateScripts = scrRes.scripts.filter(s => ownsCurrentUser(s.owner));
                 const privateGroupNames = new Set(privateScripts.map(s => s.group_id));
                 MOCK_SCRIPT_GROUPS = grpRes.groups
-                    .filter(g => String(g.owner || '').toLocaleLowerCase() === currentUserName || privateGroupNames.has(g.id))
+                    .filter(g => ownsCurrentUser(g.owner) || privateGroupNames.has(g.id))
                     .map(g => ({ id: g.id, name: g.name, icon: '💬', owner: g.owner, sort_order: g.sort_order }));
                 MOCK_SCRIPTS = privateScripts.map(s => ({
                     id: s.id, groupId: s.group_id, title: s.title, content: s.content || '',
-                    tags: (s.tags || '').split(',').filter(Boolean), keywords: [], summary: '', updatedAt: (s.created_at || '').split(' ')[0], owner: s.owner, ownerId: s.ownerId,
+                    tags: (s.tags || '').split(',').filter(Boolean), keywords: [], summary: '', updatedAt: (s.created_at || '').split(' ')[0], owner: s.owner,
                 }));
                 MOCK_RULE_GROUPS = rgrpRes.groups.map(g => ({ id: g.id, name: g.name, icon: '📢', owner: g.owner, sort_order: g.sort_order }));
                 MOCK_RULES = rulRes.rules.map(r => ({
@@ -969,7 +968,7 @@
             APP_STATE.ctxTargetId = gid;
             APP_STATE.ctxTargetType = 'scriptGroup';
             const g = MOCK_SCRIPT_GROUPS.find(g => g.id === gid);
-            const canEditGroup = g ? canEdit(g.owner) : false;
+            const canEditGroup = g ? ownsCurrentUser(g.owner) : false;
             document.getElementById('ctxGroupRename').style.display = canEditGroup ? '' : 'none';
             document.getElementById('ctxGroupDelete').style.display = canEditGroup ? '' : 'none';
             const m = document.getElementById('groupCtxMenu');
@@ -985,7 +984,7 @@
             const g = MOCK_SCRIPT_GROUPS.find(g => g.id === gid);
             if (!g) return;
             if (action === 'rename') {
-                if (!canEdit(g.owner)) { showToast('无权限重命名', 'error'); return; }
+                if (!ownsCurrentUser(g.owner)) { showToast('无权限重命名', 'error'); return; }
                 showPrompt('重命名话术组', '组名称', g.name, async (n) => {
                     if (!n || !n.trim() || n.trim() === g.name) return;
                     try {
@@ -997,7 +996,7 @@
                     } catch (err) { showToast(err.message || '重命名失败', 'error'); }
                 });
             } else if (action === 'delete') {
-                if (!canDelete(g.owner)) { showToast('无权限删除', 'error'); return; }
+                if (!ownsCurrentUser(g.owner)) { showToast('无权限删除', 'error'); return; }
                 showConfirm('删除话术组', `确定删除话术组"${g.name}"及其所有话术？`, async (ok) => {
                     if (!ok) return;
                     try {
@@ -1050,7 +1049,7 @@
         }
 
         function renderScriptCards(scripts) {
-            return `<div class="file-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));">${scripts.map(s=>{const canEditScript=canEdit(s.owner);const plain=s.content.replace(/<[^>]*>/g,'');const preview=plain.length>60?plain.substring(0,60)+'...':plain;const g=MOCK_SCRIPT_GROUPS.find(g=>g.id===s.groupId);return`
+            return `<div class="file-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));">${scripts.map(s=>{const canEditScript=ownsCurrentUser(s.owner);const plain=s.content.replace(/<[^>]*>/g,'');const preview=plain.length>60?plain.substring(0,60)+'...':plain;const g=MOCK_SCRIPT_GROUPS.find(g=>g.id===s.groupId);return`
                 <div class="script-card" style="cursor:pointer;" onclick="previewScript('${s.id}')">
                     <div class="sc-title">${escapeHTML(s.title)}${!canEditScript?' 🔒':''}</div>
                     ${s.summary?`<div class="sc-summary">🤖 ${escapeHTML(s.summary)}</div>`:''}
@@ -1065,7 +1064,7 @@
                 </div>`;}).join('')}</div>`;
         }
 
-        function deleteScript(sid) { const s = MOCK_SCRIPTS.find(s => s.id === sid); if (!s) return; if (!canDelete(s.owner)) {
+        function deleteScript(sid) { const s = MOCK_SCRIPTS.find(s => s.id === sid); if (!s) return; if (!ownsCurrentUser(s.owner)) {
                 showToast('无权限删除', 'error'); return; }
             showConfirm('删除话术', `确定删除"${s.title}"？`, async (ok) => {
                 if (!ok) return;
@@ -1132,7 +1131,7 @@
             document.getElementById('scriptEditorTitle').textContent = sid ? '✏️ 编辑话术' : '➕ 新建话术';
             document.getElementById('scriptGroupSelect').innerHTML = MOCK_SCRIPT_GROUPS.map(g =>
                 `<option value="${g.id}">💬 ${escapeHTML(g.name)}</option>`).join(''); if (sid) { const s = MOCK_SCRIPTS.find(
-                s => s.id === sid); if (s) { if (!canEdit(s.owner)) { showToast('无权限编辑', 'error'); return; }
+                s => s.id === sid); if (s) { if (!ownsCurrentUser(s.owner)) { showToast('无权限编辑', 'error'); return; }
                 document.getElementById('scriptTitleInput').value = s.title;
                 document.getElementById('scriptGroupSelect').value = s.groupId;
                 document.getElementById('richEditor').innerHTML = s.content;

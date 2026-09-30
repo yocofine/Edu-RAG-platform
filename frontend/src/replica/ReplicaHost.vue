@@ -107,7 +107,7 @@ onMounted(async () => {
     removeResponsiveHandlers = installResponsiveNavigation()
     removeAuthSubmitGuard = installAuthSubmitGuard()
 
-    await loadScript('/replica/legacy-api.js?v=20260930-private-scripts') // 定义 AuthAPI / FileAPI 等全局对象
+    await loadScript('/replica/legacy-api.js?v=20260930-owner-scope') // 定义 AuthAPI / FileAPI 等全局对象
     if (disposed) return
     if (window.ReplicaAuth?.bootstrap) {
       await settleWithin(window.ReplicaAuth.bootstrap(), 3000).catch(error => {
@@ -115,7 +115,7 @@ onMounted(async () => {
       })
     }
     if (disposed) return
-    await loadScript('/replica/legacy-app.js?v=20260930-private-scripts') // 原页面逻辑，末尾会自行调用 init()
+    await loadScript('/replica/legacy-app.js?v=20260930-owner-scope') // 原页面逻辑，末尾会自行调用 init()
     const submitButton = host.value?.querySelector('#authSubmitBtn')
     if (submitButton) {
       submitButton.disabled = false
