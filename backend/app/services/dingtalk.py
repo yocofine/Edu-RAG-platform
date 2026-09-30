@@ -21,10 +21,11 @@ TAG_RE = re.compile(r"<[^>]+>")
 # 钉钉 markdown 支持 <font color> 标签（实测：群里按该颜色渲染），所以推送到钉钉时
 # 必须保留颜色标签；其余 HTML 标签照旧剥离，避免标签原文漏进消息。
 FONT_TAG_RE = re.compile(r"<font\s+color=[\x22][^\x22]*[\x22]\s*>|</font>", re.IGNORECASE)
-# 钉钉 markdown 支持 **加粗** 与 *斜体*，所以推送时把编辑器产生的 <b>/<strong>、
-# <i>/<em> 以及对应的 span style 形式，转换成 markdown 语法。
+# 钉钉机器人的 markdown 对行内加粗/斜体兼容性不一致，部分客户端会直接
+# 显示 **文字**。因此推送时保留文字内容，去掉加粗/斜体标记，避免伪格式。
 BOLD_TAG_RE = re.compile(r"</?(?:b|strong)\s*>", re.IGNORECASE)
 ITALIC_TAG_RE = re.compile(r"</?(?:i|em)\s*>", re.IGNORECASE)
+MARKDOWN_BOLD_RE = re.compile(r"\*\*(?P<text>.+?)\*\*", re.DOTALL)
 # 部分浏览器 execCommand 产出 <span style="color: ...">，统一改写成 <font color>。
 # Chrome 在同段文字上同时应用加粗与颜色时，会把多个样式合并进同一个 style 属性，
 # 所以必须一次性解析整个 style，逐条单独匹配会漏掉其它样式（曾导致"只有颜色没有加粗"）。
@@ -33,18 +34,13 @@ SPAN_STYLE_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 SPAN_COLOR_VALUE_RE = re.compile(r"color:\s*(#[0-9a-fA-F]{3,6}|rgb\([^)]*\))", re.IGNORECASE)
-SPAN_BOLD_VALUE_RE = re.compile(r"font-weight:\s*(?:bold|[6-9]00)", re.IGNORECASE)
-SPAN_ITALIC_VALUE_RE = re.compile(r"font-style:\s*italic", re.IGNORECASE)
 
 
 def _span_to_rich_text(match: re.Match) -> str:
     """把 span 的 color / font-weight / font-style 一次性翻译成钉钉可渲染的形式。"""
     style = match.group("style")
     text = match.group("text")
-    if SPAN_BOLD_VALUE_RE.search(style):
-        text = f"**{text}**"
-    if SPAN_ITALIC_VALUE_RE.search(style):
-        text = f"*{text}*"
+    # 加粗/斜体只保留语义文字，不生成钉钉可能直出的 * 标记。
     color = SPAN_COLOR_VALUE_RE.search(style)
     if color:
         text = f'<font color="{_normalize_color(color.group(1))}">{text}</font>'
@@ -74,9 +70,10 @@ def _plain_text(value: str) -> str:
     # span 形式统一成 font 形式（钉钉只能稳定渲染 <font color>），且可能同时含
     # color / font-weight / font-style，必须一次性解析，否则会丢样式
     text = SPAN_STYLE_RE.sub(_span_to_rich_text, text)
-    # <b>/<strong> -> **文字**，<i>/<em> -> *文字*（都是钉钉支持的 markdown）
-    text = BOLD_TAG_RE.sub("**", text)
-    text = ITALIC_TAG_RE.sub("*", text)
+    # HTML 强调标签只剥标签不剥内容；同时清理用户直接输入的 **Markdown**。
+    text = BOLD_TAG_RE.sub("", text)
+    text = ITALIC_TAG_RE.sub("", text)
+    text = MARKDOWN_BOLD_RE.sub(lambda match: match.group("text"), text)
     # 剥掉其余标签之前，先把颜色标签用私有区占位符暂存，剥完再还原
     kept: list[str] = []
 

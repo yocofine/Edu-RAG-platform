@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, update
 
 from .config import get_settings
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, engine, migrate_content_group_uniqueness
 from .events import event_hub
 from .models import IngestionJob, JobStatus, Section
 from .routers import admin, ai, auth, chat, content, content_groups, conversations, documents, faqs, sections
@@ -19,6 +19,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    migrate_content_group_uniqueness()
     with SessionLocal() as db:
         terminal = [
             JobStatus.published.value, JobStatus.failed.value,

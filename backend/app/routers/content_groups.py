@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -21,15 +21,31 @@ def _model(kind: str):
 def _check_write(kind: str, user: User, group: ContentGroup | None = None) -> None:
     if kind == "rules" and user.role != Role.admin.value:
         raise HTTPException(status_code=403, detail="规则分组仅允许管理员修改")
-    if group is not None and user.role != Role.admin.value and group.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="无权限修改该分组")
+    if kind == "scripts" and group is not None and group.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="话术分组已按用户隔离，无权限修改他人分组")
 
 
 def _visible_group_query(kind: str, user: User):
     query = select(ContentGroup).where(ContentGroup.kind == kind)
-    if kind == "scripts" and user.role != Role.admin.value:
-        admin_ids = select(User.id).where(User.role == Role.admin.value)
-        query = query.where(or_(ContentGroup.owner_id == user.id, ContentGroup.owner_id.in_(admin_ids)))
+    if kind == "scripts":
+        query = query.where(ContentGroup.owner_id == user.id)
+    return query
+
+
+def _named_group_query(kind: str, name: str, user: User):
+    query = select(ContentGroup).where(ContentGroup.kind == kind, ContentGroup.name == name)
+    if kind == "scripts":
+        query = query.where(ContentGroup.owner_id == user.id)
+    return query
+
+
+def _duplicate_group_query(kind: str, name: str, user: User):
+    query = select(ContentGroup).where(
+        ContentGroup.kind == kind,
+        func.lower(ContentGroup.name) == name.lower(),
+    )
+    if kind == "scripts":
+        query = query.where(ContentGroup.owner_id == user.id)
     return query
 
 
@@ -53,9 +69,8 @@ def list_groups(
 
     model = _model(kind)
     content_query = select(model).where(model.deleted_at.is_(None))
-    if kind == "scripts" and user.role != Role.admin.value:
-        admin_ids = select(User.id).where(User.role == Role.admin.value)
-        content_query = content_query.where(or_(model.owner_id == user.id, model.owner_id.in_(admin_ids)))
+    if kind == "scripts":
+        content_query = content_query.where(model.owner_id == user.id)
     for item in db.scalars(content_query).all():
         name = (item.group_name or ("通知规则" if kind == "rules" else "默认分组")).strip()
         if name and name.casefold() not in names:
@@ -73,12 +88,13 @@ def create_group(
 ):
     _check_write(kind, user)
     name = payload.name.strip()
-    duplicate = db.scalar(
-        select(ContentGroup).where(ContentGroup.kind == kind, func.lower(ContentGroup.name) == name.lower())
-    )
+    duplicate = db.scalar(_duplicate_group_query(kind, name, user))
     if duplicate:
         raise HTTPException(status_code=409, detail="已存在同名分组")
-    sort_order = db.scalar(select(func.count()).select_from(ContentGroup).where(ContentGroup.kind == kind)) or 0
+    order_query = select(func.count()).select_from(ContentGroup).where(ContentGroup.kind == kind)
+    if kind == "scripts":
+        order_query = order_query.where(ContentGroup.owner_id == user.id)
+    sort_order = db.scalar(order_query) or 0
     group = ContentGroup(kind=kind, name=name, owner_id=user.id, sort_order=sort_order)
     db.add(group)
     db.add(AuditLog(action="创建", target_type="规则分组" if kind == "rules" else "话术分组", target_name=name, operator_id=user.id))
@@ -94,16 +110,11 @@ def rename_group(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    group = db.scalar(select(ContentGroup).where(ContentGroup.kind == kind, ContentGroup.name == group_name))
+    group = db.scalar(_named_group_query(kind, group_name, user))
     _check_write(kind, user, group)
     new_name = payload.name.strip()
-    duplicate = db.scalar(
-        select(ContentGroup).where(
-            ContentGroup.kind == kind,
-            func.lower(ContentGroup.name) == new_name.lower(),
-            ContentGroup.name != group_name,
-        )
-    )
+    duplicate_query = _duplicate_group_query(kind, new_name, user).where(ContentGroup.name != group_name)
+    duplicate = db.scalar(duplicate_query)
     if duplicate:
         raise HTTPException(status_code=409, detail="已存在同名分组")
     if group:
@@ -111,7 +122,7 @@ def rename_group(
         group.updated_at = datetime.now(timezone.utc)
     model = _model(kind)
     item_query = select(model).where(model.group_name == group_name, model.deleted_at.is_(None))
-    if kind == "scripts" and user.role != Role.admin.value:
+    if kind == "scripts":
         item_query = item_query.where(model.owner_id == user.id)
     for item in db.scalars(item_query).all():
         item.group_name = new_name
@@ -128,12 +139,12 @@ def delete_group(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    group = db.scalar(select(ContentGroup).where(ContentGroup.kind == kind, ContentGroup.name == group_name))
+    group = db.scalar(_named_group_query(kind, group_name, user))
     _check_write(kind, user, group)
     now = datetime.now(timezone.utc)
     model = _model(kind)
     item_query = select(model).where(model.group_name == group_name, model.deleted_at.is_(None))
-    if kind == "scripts" and user.role != Role.admin.value:
+    if kind == "scripts":
         item_query = item_query.where(model.owner_id == user.id)
     for item in db.scalars(item_query).all():
         item.deleted_at = now

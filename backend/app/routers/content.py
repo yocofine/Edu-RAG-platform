@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -39,8 +39,8 @@ def serialize(item) -> dict:
 def require_write_permission(kind: str, user: User, item=None) -> None:
     if kind == "rules" and user.role != "admin":
         raise HTTPException(status_code=403, detail="规则通知仅允许管理员修改")
-    if item is not None and user.role != "admin" and item.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="无权限修改")
+    if kind == "scripts" and item is not None and item.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="话术库已按用户隔离，无权限修改他人话术")
 
 
 def drop_legacy_chunks(background_tasks: BackgroundTasks, kind: str, item) -> None:
@@ -75,14 +75,9 @@ def queue_rule_notification(background_tasks: BackgroundTasks, item: RuleItem, u
 def list_items(kind: Literal["scripts", "rules"], user: User = Depends(current_user), db: Session = Depends(get_db)):
     model = model_for(kind)
     query = select(model).where(model.deleted_at.is_(None))
-    if kind == "scripts" and user.role != "admin":
-        # 话术库按用户隔离，规则如下：
-        #   * 管理员创建的话术 = 平台公共话术，所有登录用户可见；
-        #   * 普通用户创建的话术 = 私有，只有本人可见。
-        # 这样普通用户既能用上管理员维护的内容，又不会互相看到对方的私有话术。
-        # 若想改成「严格只看自己」，把下面这行换成 query.where(model.owner_id == user.id) 即可。
-        admin_ids = select(User.id).where(User.role == "admin")
-        query = query.where(or_(model.owner_id == user.id, model.owner_id.in_(admin_ids)))
+    if kind == "scripts":
+        # 所有角色（包括管理员）都只能看到自己的话术。
+        query = query.where(model.owner_id == user.id)
     # 规则通知不隔离：普通用户可读全量，写入仍限管理员。
     items = db.scalars(query.order_by(model.updated_at.desc())).all()
     return {"items": [serialize(item) for item in items]}

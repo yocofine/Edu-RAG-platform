@@ -52,7 +52,9 @@ def _job_preview_kind(version: DocumentVersion | None) -> str:
 def stats(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {
         "documents": db.scalar(select(func.count()).select_from(Document).where(Document.deleted_at.is_(None))) or 0,
-        "scripts": db.scalar(select(func.count()).select_from(ScriptItem).where(ScriptItem.deleted_at.is_(None))) or 0,
+        "scripts": db.scalar(select(func.count()).select_from(ScriptItem).where(
+            ScriptItem.deleted_at.is_(None), ScriptItem.owner_id == user.id,
+        )) or 0,
         "rules": db.scalar(select(func.count()).select_from(RuleItem).where(RuleItem.deleted_at.is_(None))) or 0,
         "members": db.scalar(select(func.count()).select_from(User).where(User.disabled.is_(False))) or 0,
         "sections": db.scalar(select(func.count()).select_from(Section)) or 0,

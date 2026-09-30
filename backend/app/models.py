@@ -140,7 +140,9 @@ class ScriptItem(Base):
 
 class ContentGroup(Base):
     __tablename__ = "content_groups"
-    __table_args__ = (UniqueConstraint("kind", "name", name="uq_content_group_kind_name"),)
+    __table_args__ = (
+        UniqueConstraint("owner_id", "kind", "name", name="uq_content_group_owner_kind_name"),
+    )
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: uid("grp"))
     kind: Mapped[str] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(120))
