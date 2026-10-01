@@ -79,8 +79,9 @@ class Settings(BaseSettings):
     langsmith_project: str = Field(default="knowforge-rag-platform", validation_alias="LANGSMITH_PROJECT")
     langsmith_endpoint: str = Field(default="https://api.smith.langchain.com", validation_alias="LANGSMITH_ENDPOINT")
 
-    # Embedding 后端：local=本地 BGE；api=OpenAI 兼容 /embeddings 接口。
-    embedding_backend: str = Field(default="local", validation_alias="EMBEDDING_BACKEND")
+    # Embedding 后端：仅支持 api（OpenAI 兼容 /embeddings 接口）。
+    # local（本地 BGE）依赖的 torch / sentence-transformers 已从镜像移除，设为 local 会直接报错。
+    embedding_backend: str = Field(default="api", validation_alias="EMBEDDING_BACKEND")
     embedding_model_path: str = Field(default=str(PROJECT_ROOT / "models" / "bge-m3"), validation_alias="EMBEDDING_MODEL_PATH")
     embedding_api_base_url: str = Field(
         default="https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -97,17 +98,17 @@ class Settings(BaseSettings):
     embedding_model_version: str = Field(default="bge-m3-local-v1", validation_alias="EMBEDDING_MODEL_VERSION")
     reranker_model_version: str = Field(default="bge-reranker-large-local-v1", validation_alias="RERANKER_MODEL_VERSION")
 
-    # 二阶段重排后端：
-    #   local = 进程内 CrossEncoder（默认，无外部依赖，但纯 CPU 推理较慢）；
-    #   api   = 调用远端 rerank 服务（延迟低、可扩展，但需要外部网络与 API Key，
-    #           且会把候选 chunk 原文发送到服务方，涉及数据出域）。
-    rerank_backend: str = Field(default="local", validation_alias="RERANK_BACKEND")
+    # 二阶段重排后端：仅支持 api（远端 rerank 服务）。
+    # local（进程内 CrossEncoder）依赖的 torch / sentence-transformers 已从镜像移除，设为 local 会直接报错。
+    # api 需要外部网络与 API Key，且会把候选 chunk 原文发送到服务方，涉及数据出域。
+    rerank_backend: str = Field(default="api", validation_alias="RERANK_BACKEND")
     rerank_api_model: str = Field(default="qwen3.7-text-rerank", validation_alias="RERANK_API_MODEL")
     rerank_api_base_url: str = Field(default="https://dashscope.aliyuncs.com", validation_alias="RERANK_API_BASE_URL")
     rerank_api_key: str = Field(default="", validation_alias="RERANK_API_KEY")
     rerank_api_timeout: float = Field(default=30.0, validation_alias="RERANK_API_TIMEOUT")
-    # 远端重排失败时是否回退本地 CrossEncoder（建议 true：避免网络抖动直接打断问答）
-    rerank_api_fallback_local: bool = Field(default=True, validation_alias="RERANK_API_FALLBACK_LOCAL")
+    # 远端重排失败时是否回退本地 CrossEncoder。
+    # 本地 CrossEncoder 依赖已从镜像移除，该开关当前无效（开启只会在日志里告警）。
+    rerank_api_fallback_local: bool = Field(default=False, validation_alias="RERANK_API_FALLBACK_LOCAL")
     chunk_schema_version: str = Field(default="parent_child_v1", validation_alias="CHUNK_SCHEMA_VERSION")
 
     customer_service_phone: str = Field(default="12345678", validation_alias="CUSTOMER_SERVICE_PHONE")

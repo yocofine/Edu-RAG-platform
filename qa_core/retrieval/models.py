@@ -5,16 +5,11 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import time
 import urllib.error
 import urllib.request
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Callable
-
-# 防止 transformers 将 SentencePiece 转 Tiktoken 失败导致崩溃，需在导入前设置
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 from qa_core.config.logging_config import get_logger
 from qa_core.config.settings import get_settings
@@ -107,18 +102,6 @@ class ApiEmbeddings:
         return self._request([str(text or "")])[0]
 
 
-def resolve_device() -> str:
-    """选择本机可用推理设备（CUDA > CPU），CPU 是正常执行设备而非降级方案。
-
-    BGE embedding 和 CrossEncoder 在典型批大小下 CPU 推理延迟完全可接受，
-    所以 CPU 是一等执行设备；CUDA 只是可有可无的加速，不是必要条件。
-    这样设计避免了对 GPU 环境的硬依赖，降低部署门槛。
-    """
-    import torch
-
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
 @lru_cache(maxsize=1)
 def get_embeddings():
     """返回已缓存的 BGE 向量模型，用于 Milvus 稠密向量检索。
@@ -150,50 +133,18 @@ def get_embeddings():
             timeout=settings.embedding_api_timeout,
             max_retries=settings.embedding_api_max_retries,
         )
-    if backend != "local":
-        raise RuntimeError(f"不支持的 EMBEDDING_BACKEND：{backend}")
-    from langchain_huggingface import HuggingFaceEmbeddings
-
-    model_path = Path(settings.embedding_model_path)
-    if not model_path.exists():
-        raise RuntimeError(f"Embedding model path does not exist: {model_path}")
-    # 创建 BGE HuggingFaceEmbeddings 实例，用于生成稠密向量
-    return HuggingFaceEmbeddings(
-        model_name=str(model_path),
-        # 自动选择 CUDA 或 CPU 作为推理设备
-        model_kwargs={"device": resolve_device(), "local_files_only": True},
-        encode_kwargs={"normalize_embeddings": True},
+    raise RuntimeError(
+        f"不支持的 EMBEDDING_BACKEND：{backend}。"
+        "当前镜像已移除本地模型依赖（torch / sentence-transformers），"
+        "请使用 EMBEDDING_BACKEND=api 走远端向量化接口。"
     )
 
 
-@lru_cache(maxsize=1)
 def _get_local_reranker():
-    """返回已缓存的 CrossEncoder 重排模型，用于 Milvus 召回后的二阶段精细排序。
-
-    与 get_embeddings 同理：CrossEncoder 权重文件通常在 1GB 以上，加载是进程级
-    重操作。lru_cache 确保只加载一次，所有检索请求复用同一个重排模型实例。
-    """
-    from sentence_transformers import CrossEncoder
-
-    # 加载应用全局设置（reranker 模型路径等配置）
-    settings = get_settings()
-    model_path = Path(settings.reranker_model_path)
-    if not model_path.exists():
-        raise RuntimeError(f"Reranker model path does not exist: {model_path}")
-    vocab_file = model_path / "sentencepiece.bpe.model"
-    if not vocab_file.exists():
-        raise RuntimeError(f"Reranker tokenizer vocab file does not exist: {vocab_file}")
-    # 创建 CrossEncoder 重排模型实例，用于 Milvus 召回后的二阶段精细排序
-    return CrossEncoder(
-        str(model_path),
-        # 自动选择 CUDA 或 CPU 作为推理设备
-        device=resolve_device(),
-        local_files_only=True,
-        tokenizer_kwargs={
-            "use_fast": False,
-            # 新版 transformers 读 tokenizer_config.json 相对路径可能拼错，显式传完整路径
-            "vocab_file": str(vocab_file),
-        },
+    """本地 CrossEncoder 已随 torch 一起移除，保留此函数只为给出明确报错。"""
+    raise RuntimeError(
+        "本地 CrossEncoder 重排不可用：当前镜像已移除本地模型依赖"
+        "（torch / sentence-transformers）。请使用 RERANK_BACKEND=api 并配置 RERANK_API_KEY。"
     )
 
 
@@ -308,11 +259,20 @@ def get_reranker():
     settings = get_settings()
     backend = str(getattr(settings, "rerank_backend", "") or "local").strip().lower()
     if backend != "api":
-        return _get_local_reranker()
+        raise RuntimeError(
+            f"不支持的 RERANK_BACKEND：{backend}。"
+            "当前镜像已移除本地模型依赖（torch / sentence-transformers），"
+            "请使用 RERANK_BACKEND=api 走远端重排接口。"
+        )
     api_key = str(getattr(settings, "rerank_api_key", "") or "").strip()
     if not api_key:
         raise RuntimeError("RERANK_BACKEND=api 但未配置 RERANK_API_KEY，无法调用远端重排。")
-    fallback_factory = _get_local_reranker if getattr(settings, "rerank_api_fallback_local", True) else None
+    # 本地回退依赖已移除：即使配置打开了 RERANK_API_FALLBACK_LOCAL 也拿不到本地模型。
+    fallback_factory = None
+    if getattr(settings, "rerank_api_fallback_local", False):
+        logger.warning(
+            "RERANK_API_FALLBACK_LOCAL 已开启，但本地 CrossEncoder 依赖已移除；远端重排失败将直接报错。"
+        )
     logger.info(
         "重排后端已切换为远端 API：model=%s endpoint=%s 本地回退=%s",
         getattr(settings, "rerank_api_model", ""),

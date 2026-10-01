@@ -18,15 +18,18 @@
 /opt/edu-rag-platform-server
 ```
 
-服务器部署副本已经包含所需的 BGE-M3 模型：
+服务器部署副本**不再需要本地模型**：向量化与重排统一走远端 API
+（`EMBEDDING_BACKEND=api` / `RERANK_BACKEND=api`），镜像里已移除
+torch / sentence-transformers 等本地推理依赖。
 
-```text
-models/bge-m3/
-```
+因此：
 
-上传整个 `edu-rag-platform-server` 目录时会一并上传，不需要再单独准备模型。
-本地 `bge-reranker-large`、`bert-base-chinese` 和 `bert_query_classifier` 没有复制到部署版。
-只有以后把 `RERANK_BACKEND` 改回 `local` 时，才需要额外上传 `models/bge-reranker-large/`。
+- 不需要上传 `models/bge-m3/`（仓库里也不再包含它）；
+- 不需要 `models/bge-reranker-large/`；
+- 只需在 `.env` 里配好 `EMBEDDING_API_KEY` 和 `RERANK_API_KEY`。
+
+> 历史说明：早期版本用本地 BGE-M3 做 embedding，需要把模型放到 `models/bge-m3/`。
+> 如果服务器上还留着这份 2.1 GB 的权重，确认新版本跑通后可以直接删除。
 
 ## 3. 配置阿里云镜像加速
 

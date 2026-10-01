@@ -3,8 +3,8 @@
 本目录面向阿里云 Linux 服务器部署。首次部署请先阅读 [SERVER_DEPLOY.md](SERVER_DEPLOY.md)，
 不要从本地开发目录复制 `.env`、数据库、日志或缓存到服务器。
 
-服务器副本已包含 `models/bge-m3`，运行时通过 `MODEL_HOST_PATH=./models` 只读挂载到
-容器 `/app/models`；Reranker 通过 API 调用，不包含也不要求上传本地重排模型。
+向量化与重排统一走远端 API（`EMBEDDING_BACKEND=api` / `RERANK_BACKEND=api`），
+镜像里已移除 torch / sentence-transformers 等本地推理依赖，**不需要再准备本地模型文件**。
 
 独立的公司内部教辅知识平台。前端保留原教辅知识库的视觉和八个业务模块，后端统一为
 FastAPI；RAG 核心复用 KnowForge，支持大模型意图识别、真实文件查找、最近上传、
@@ -49,12 +49,8 @@ python -m venv .venv
 cp .env.example .env
 ```
 
-将模型放到：
-
-```text
-models/bge-m3/
-models/bge-reranker-large/
-```
+无需放置本地模型（embedding / rerank 均走远端 API）。只需在 `.env` 里填好
+`EMBEDDING_API_KEY` 与 `RERANK_API_KEY`。
 
 构建并启动：
 

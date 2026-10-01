@@ -13,14 +13,16 @@ if grep -q "CHANGE_ME" .env; then
   exit 1
 fi
 
-if [[ ! -d models/bge-m3 ]]; then
-  echo "缺少 models/bge-m3，请先上传 Embedding 模型。" >&2
+# 本地模型依赖（torch / sentence-transformers）已从镜像移除，embedding 只能走远端 API。
+embedding_backend="$(sed -n 's/^EMBEDDING_BACKEND=//p' .env | tail -n 1 | tr -d '\r')"
+if [[ "${embedding_backend:-api}" != "api" ]]; then
+  echo "EMBEDDING_BACKEND=${embedding_backend}：本地 embedding 依赖已移除，只能使用 api。" >&2
   exit 1
 fi
 
 rerank_backend="$(sed -n 's/^RERANK_BACKEND=//p' .env | tail -n 1 | tr -d '\r')"
-if [[ "${rerank_backend:-local}" == "local" && ! -d models/bge-reranker-large ]]; then
-  echo "本地重排模式缺少 models/bge-reranker-large。" >&2
+if [[ "${rerank_backend:-api}" != "api" ]]; then
+  echo "RERANK_BACKEND=${rerank_backend}：本地 CrossEncoder 依赖已移除，只能使用 api。" >&2
   exit 1
 fi
 
