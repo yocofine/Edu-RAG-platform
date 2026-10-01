@@ -70,6 +70,8 @@ class QAService:
         user_role: str | None = None,
         user_roles: list[str] | None = None,
         intent_override: dict[str, Any] | None = None,
+        content_scope: str | None = None,
+        user_id: str | None = None,
     ) -> Generator[dict[str, Any], None, None]:
         """完整流式问答入口。委托 RAGPipeline 执行查询路由 -> 检索准备 -> 检索 -> 生成全链路，
         以事件生成器（status / token / end / error）形式逐块产出，由 API 层 WebSocket 转发。
@@ -117,6 +119,8 @@ class QAService:
             user_role=user_role,
             user_roles=user_roles,
             intent_override=intent_override,
+            content_scope=content_scope,
+            user_id=user_id,
         )
 
     def debug_retrieval(

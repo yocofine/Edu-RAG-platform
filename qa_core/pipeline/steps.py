@@ -244,7 +244,9 @@ def decide_route(context: RAGQueryContext) -> RouteDecision:
         _apply_direct_route(context, intent, route="direct_answer", reason=intent.reason)
         return RouteDecision(route="direct_answer", answer=boundary_answer, intent=intent, reason=intent.reason)
 
-    if should_try_faq_fast_path(context.query, context.scenario):
+    # 选择具体板块（规则通知/话术库）时跳过 FAQ 精确快路径，
+    # 避免问题刚好命中 FAQ 而绕过用户选中的板块。
+    if context.content_scope == "documents" and should_try_faq_fast_path(context.query, context.scenario):
         answer, intent = try_fast_faq_direct_answer(context)
         if answer:
             context.hit_type = "faq_direct"

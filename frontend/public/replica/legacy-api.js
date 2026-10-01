@@ -575,7 +575,10 @@
   var AIAPI = {
     /* 所有聊天输入先进入后端统一意图路由。后端以 NDJSON 发送状态、意图、
      * token、文件与引用事件，前端可以边接收边渲染，不再先做本地关键词匹配。 */
-    stream: async function (query, onEvent) {
+    stream: async function (query, scope, onEvent) {
+      // 兼容旧签名 stream(query, onEvent)；新增的第二参数为板块：documents/rules/scripts
+      if (typeof scope === 'function') { onEvent = scope; scope = 'documents'; }
+      if (['documents', 'rules', 'scripts'].indexOf(scope) === -1) scope = 'documents';
       var response = await fetch(API_BASE + '/chat/stream', {
         method: 'POST',
         credentials: 'include',
@@ -583,7 +586,7 @@
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken()
         },
-        body: JSON.stringify({ query: query })
+        body: JSON.stringify({ query: query, scope: scope })
       });
       if (!response.ok) {
         var errorData = await response.json().catch(function () { return null; });

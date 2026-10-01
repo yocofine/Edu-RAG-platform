@@ -1444,6 +1444,79 @@ button:disabled {
   transform: none;
 }
 
+/* 智能搜索的板块选择器：默认"全部文件"，可切到"规则通知"/"话术库" */
+.chat-scope {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.chat-scope-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-scope-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chat-scope-caret {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.chat-scope-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 116px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.14);
+}
+
+.chat-scope-menu[hidden] {
+  display: none;
+}
+
+.chat-scope-option {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-scope-option:hover {
+  background: var(--accent-light);
+}
+
+.chat-scope-option.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* Analysis, tables and settings */
 #view-ai-analysis,
 #view-logs,

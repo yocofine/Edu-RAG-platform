@@ -97,6 +97,8 @@ class IntentResult(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
     session_id: str | None = None
+    # 板块检索范围：documents=文件（默认，现有 FAQ+文件链路）/ rules=规则通知 / scripts=话术库
+    scope: Literal["documents", "rules", "scripts"] = "documents"
 
 
 class ConversationCreate(BaseModel):

@@ -10,7 +10,7 @@ from ..db import get_db
 from ..deps import admin_user, csrf_protected, current_user
 from ..models import AuditLog, RuleItem, ScriptItem, User
 from ..schemas import ContentRequest
-from ..services.content_index import remove_business_content
+from ..services.content_index import delete_content_item, index_content_item
 from ..services.dingtalk import (
     dingtalk_configured,
     send_rule_notification,
@@ -61,18 +61,14 @@ def owned_item(kind: str, item_id: str, user: User, db: Session):
     )
 
 
-def drop_legacy_chunks(background_tasks: BackgroundTasks, kind: str, item) -> None:
-    """清理历史遗留的话术/规则向量片段。
+def queue_content_index(background_tasks: BackgroundTasks, kind: str, item_id: str) -> None:
+    """在后台任务里刷新话术/规则的向量索引。
 
-    话术库和规则通知**不再写入向量库**：它们属于业务数据，只在业务库里维护、
-    供前端浏览，不参与 RAG 知识检索。早期版本曾把它们索引进 doc collection，
-    这里在内容变更时顺手把残留 chunk 摘掉，避免旧内容还能被检索到。
+    话术写入独立的 script collection（检索时按 owner_id 隔离），
+    规则写入独立的 rule collection（全员可读）。写库成功后以 BackgroundTask 异步建索引，
+    避免 Milvus 写入耗时拖慢接口响应；失败只影响该条目的可检索性，不影响业务读写。
     """
-    chunk_ids = item.index_chunk_ids
-    if not chunk_ids or chunk_ids == "[]":
-        return
-    background_tasks.add_task(remove_business_content, kind, chunk_ids)
-    item.index_chunk_ids = "[]"
+    background_tasks.add_task(index_content_item, kind, item_id)
 
 
 def queue_rule_notification(background_tasks: BackgroundTasks, item: RuleItem, user: User) -> bool:
@@ -111,7 +107,8 @@ def create_item(kind: Literal["scripts", "rules"], payload: ContentRequest, back
     db.add(AuditLog(action="创建", target_type="话术" if kind == "scripts" else "规则", target_name=item.title, operator_id=user.id))
     db.commit()
     db.refresh(item)
-    # 话术/规则不入向量库：它们只在业务库中维护与浏览。
+    # 写库成功后异步建/刷新向量索引（独立板块集合）。
+    queue_content_index(background_tasks, kind, item.id)
     queued = queue_rule_notification(background_tasks, item, user) if kind == "rules" else False
     return {"item": serialize(item), "dingtalk_queued": queued}
 
@@ -125,9 +122,9 @@ def update_item(kind: Literal["scripts", "rules"], item_id: str, payload: Conten
     for key, value in payload.model_dump().items():
         setattr(item, key, value)
     item.updated_at = datetime.now(timezone.utc)
-    # 话术/规则不入向量库，并顺手清理历史残留 chunk。
-    drop_legacy_chunks(background_tasks, kind, item)
     db.commit()
+    # 内容变更后异步重建该条目的向量索引（旧 chunk 由索引服务按 index_chunk_ids 清理）。
+    queue_content_index(background_tasks, kind, item_id)
     queued = queue_rule_notification(background_tasks, item, user) if kind == "rules" else False
     return {"item": serialize(item), "dingtalk_queued": queued}
 
@@ -139,9 +136,9 @@ def delete_item(kind: Literal["scripts", "rules"], item_id: str, background_task
         raise HTTPException(status_code=404, detail="内容不存在")
     require_write_permission(kind, user, item)
     item.deleted_at = datetime.now(timezone.utc)
-    # 删除时同样摘掉可能残留的向量片段（正常情况下应已为空）。
-    drop_legacy_chunks(background_tasks, kind, item)
     db.commit()
+    # 逻辑删除后异步摘掉向量索引（含早期版本遗留在 doc collection 的残留 chunk）。
+    background_tasks.add_task(delete_content_item, kind, item_id)
     return {"message": "已进入回收站"}
 
 

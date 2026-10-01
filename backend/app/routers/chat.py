@@ -198,14 +198,16 @@ async def chat_stream(payload: ChatRequest, user: User = Depends(current_user), 
             _merge_token_usage(token_usage, intent.token_usage)
             yield _stream_event("intent", intent=intent.model_dump())
 
-            if intent.intent in FIXED_INTENT_REPLIES:
+            # 选择具体板块（规则通知/话术库）时，跳过意图分流，直接进入对应板块的 RAG 检索。
+            force_rag = payload.scope in {"rules", "scripts"}
+            if not force_rag and intent.intent in FIXED_INTENT_REPLIES:
                 answer = FIXED_INTENT_REPLIES[intent.intent]
                 for index in range(0, len(answer), 3):
                     token = answer[index:index + 3]
                     answer_parts.append(token)
                     yield _stream_event("token", content=token)
                     await asyncio.sleep(.018)
-            elif intent.intent == "CHAT":
+            elif not force_rag and intent.intent == "CHAT":
                 async for part in intent_classifier.stream_chat(payload.query, history):
                     token = str(part.get("content") or "")
                     if token:
@@ -213,7 +215,7 @@ async def chat_stream(payload: ChatRequest, user: User = Depends(current_user), 
                         yield _stream_event("token", content=token)
                     if part.get("usage"):
                         _merge_token_usage(token_usage, part["usage"])
-            elif intent.intent in {"FILE_SEARCH", "FILE_PREVIEW", "FILE_DOWNLOAD"}:
+            elif not force_rag and intent.intent in {"FILE_SEARCH", "FILE_PREVIEW", "FILE_DOWNLOAD"}:
                 yield _stream_event("status", message="正在查找文件")
                 file_items = await _file_search(intent, user, db)
                 answer = f"找到 {len(file_items)} 个相关文件。" if file_items else "没有找到符合条件的文件。"
@@ -230,6 +232,7 @@ async def chat_stream(payload: ChatRequest, user: User = Depends(current_user), 
                     scenario_id="education_kb", visibility="internal",
                     user_role=user.role, user_roles=[user.role],
                     intent_override=_rag_intent(intent),
+                    content_scope=payload.scope, user_id=str(user.id),
                 ))
                 while True:
                     event = await asyncio.to_thread(next, iterator, None)
@@ -285,7 +288,9 @@ async def chat(payload: ChatRequest, user: User = Depends(current_user), db: Ses
     except RuntimeError as exc:
         _append_message(db, session, "assistant", str(exc), {"type": "error"}); db.commit()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if intent.intent in FIXED_INTENT_REPLIES:
+    # 选择具体板块（规则通知/话术库）时，跳过意图分流，直接走对应板块的 RAG 检索。
+    force_rag = payload.scope in {"rules", "scripts"}
+    if not force_rag and intent.intent in FIXED_INTENT_REPLIES:
         answer = FIXED_INTENT_REPLIES[intent.intent]
         response = {
             "type": "answer", "intent": intent.model_dump(), "answer": answer,
@@ -293,7 +298,7 @@ async def chat(payload: ChatRequest, user: User = Depends(current_user), db: Ses
         }
         _append_message(db, session, "assistant", answer, {"type": "answer", "citations": []}); db.commit()
         return response
-    if intent.intent == "CHAT":
+    if not force_rag and intent.intent == "CHAT":
         try:
             answer = await intent_classifier.reply_chat(payload.query, history)
         except Exception as exc:
@@ -305,7 +310,7 @@ async def chat(payload: ChatRequest, user: User = Depends(current_user), db: Ses
         }
         _append_message(db, session, "assistant", answer, {"type": "answer", "citations": []}); db.commit()
         return response
-    if intent.intent in {"FILE_SEARCH", "FILE_PREVIEW", "FILE_DOWNLOAD"}:
+    if not force_rag and intent.intent in {"FILE_SEARCH", "FILE_PREVIEW", "FILE_DOWNLOAD"}:
         items = await _file_search(intent, user, db)
         content = f"找到 {len(items)} 个相关文件。" if items else "没有找到符合条件的文件。"
         _append_message(db, session, "assistant", content, {"type": "file_results", "items": items}); db.commit()
@@ -318,6 +323,7 @@ async def chat(payload: ChatRequest, user: User = Depends(current_user), db: Ses
                 scenario_id="education_kb", visibility="internal",
                 user_role=user.role, user_roles=[user.role],
                 intent_override=_rag_intent(intent),
+                content_scope=payload.scope, user_id=str(user.id),
             ))
         )
     except Exception as exc:
@@ -360,26 +366,32 @@ async def chat_ws(websocket: WebSocket):
                     continue
                 intent = await intent_classifier.classify(query, str(message.get("history_summary") or ""))
                 await websocket.send_json({"type": "intent", "intent": intent.model_dump()})
-                if intent.intent in FIXED_INTENT_REPLIES:
+                scope = str(message.get("scope") or "documents").strip().lower()
+                if scope not in {"documents", "rules", "scripts"}:
+                    scope = "documents"
+                force_rag = scope in {"rules", "scripts"}
+                if not force_rag and intent.intent in FIXED_INTENT_REPLIES:
                     await websocket.send_json({"type": "token", "content": FIXED_INTENT_REPLIES[intent.intent]})
                     await websocket.send_json({"type": "end", "sources": []})
                     continue
-                if intent.intent == "CHAT":
+                if not force_rag and intent.intent == "CHAT":
                     answer = await intent_classifier.reply_chat(query, str(message.get("history_summary") or ""))
                     await websocket.send_json({"type": "token", "content": answer})
                     await websocket.send_json({"type": "end", "sources": []})
                     continue
-                if intent.intent in {"FILE_SEARCH", "FILE_PREVIEW", "FILE_DOWNLOAD"}:
+                if not force_rag and intent.intent in {"FILE_SEARCH", "FILE_PREVIEW", "FILE_DOWNLOAD"}:
                     await websocket.send_json({"type": "file_results", "items": await _file_search(intent, user, db)})
                     await websocket.send_json({"type": "end"})
                     continue
                 role = user.role
+                user_id = user.id
             from qa_core.application.factory import get_qa_service
             iterator = iter(get_qa_service().stream_query(
                 query, None, message.get("session_id") or str(uuid4()),
                 scenario_id="education_kb", visibility="internal",
                 user_role=role, user_roles=[role],
                 intent_override=_rag_intent(intent),
+                content_scope=scope, user_id=str(user_id),
             ))
             while True:
                 event = await asyncio.to_thread(next, iterator, None)

@@ -58,6 +58,10 @@ class RAGQueryContext:
     })
     fast_faq_result: RetrievalResult | None = None  # FAQ fast path 检索结果缓存，供主链路复用
     fast_faq_source_filter: str | None = None       # fast path 缓存对应的 source_filter 参数
+    # 板块检索范围：documents（默认，文件+FAQ 现有链路）/ rules（规则通知）/ scripts（话术库）
+    content_scope: str = "documents"
+    # 当前用户 ID：话术板块检索必须按 owner_id 过滤，避免跨用户话术泄漏
+    user_id: str | None = None
 
     @property
     def answer(self) -> str:
@@ -175,6 +179,8 @@ def create_query_context(
     visibility: str | None,
     user_role: str | None,
     user_roles: list[str] | None,
+    content_scope: str | None = None,
+    user_id: str | None = None,
 ) -> RAGQueryContext:
     """创建单次 RAG 请求上下文：解析业务场景、数据域隔离、会话号、trace_id 和知识库版本。★★★ 核心
 
@@ -197,6 +203,8 @@ def create_query_context(
         visibility: 数据可见级别
         user_role: 用户主角色
         user_roles: 用户的全部角色列表
+        content_scope: 板块检索范围（documents/rules/scripts）；默认 documents
+        user_id: 当前用户 ID；话术板块检索按 owner_id 过滤时使用
 
     返回：
         RAGQueryContext: 包含完整请求级状态和计时起点的上下文字典
@@ -225,6 +233,8 @@ def create_query_context(
         started=time.perf_counter(),
         # 解析当前请求可用的知识库版本（请求指定 > 环境变量 > 版本清单 active）
         active_kb_version=active_kb_version,
+        content_scope=(content_scope or "documents").strip().lower() or "documents",
+        user_id=str(user_id) if user_id not in (None, "") else None,
     )
 
 

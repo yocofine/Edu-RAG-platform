@@ -22,7 +22,13 @@ from qa_core.pipeline.steps import (
     prepare_retrieval,
     stream_llm_answer,
 )
-from qa_core.pipeline.retrieval_steps import get_faq_direct_answer, search_doc, search_faq
+from qa_core.pipeline.retrieval_steps import (
+    get_faq_direct_answer,
+    search_content_scope,
+    search_doc,
+    search_faq,
+)
+from qa_core.retrieval.results import RetrievalResult
 logger = get_logger(__name__)
 
 
@@ -55,6 +61,8 @@ def stream_query(
     user_role: str | None = None,
     user_roles: list[str] | None = None,
     intent_override: dict | None = None,
+    content_scope: str | None = None,
+    user_id: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """一次完整问答请求的编排主入口，协调 Stage 0-7 管线并持续产出 WebSocket 事件流。★★★ 核心
 
@@ -99,6 +107,8 @@ def stream_query(
         visibility=visibility,
         user_role=user_role,
         user_roles=user_roles,
+        content_scope=content_scope,
+        user_id=user_id,
     )
     # 向前端发送"请求已接收"事件
     yield build_query_start_event(context)
@@ -180,25 +190,33 @@ def _search_and_generate(context, prepared, query, history) -> Generator:
         Generator yielding token/status/end 事件；
         function return value 为 None（已收尾）或 AnswerPreparation（需上游继续引用补强）
     """
-    # ── Stage 3: FAQ retrieval with direct-answer bypass ──
-    # 向前端发送"正在检索 FAQ 知识库"状态事件
-    yield build_status_event("正在检索业务 FAQ 知识库...", context.session_id)
-    # 按检索计划查询 FAQ 集合
-    faq_result = search_faq(context, prepared)
-    # 判断 FAQ 是否达到直出条件（精确匹配或分数超阈值）
-    direct_answer = get_faq_direct_answer(context, prepared, faq_result)
-    # FAQ 检索分数超阈值时可直接返回标准答案，无需 LLM 生成
-    if direct_answer:
-        context.hit_type = "faq_direct"
-        context.sources = faq_result.source_payloads()
-        yield from _finish_with_single_answer(context, history, query, direct_answer)
-        return None
+    scope = (context.content_scope or "documents").strip().lower()
+    if scope in {"scripts", "rules"}:
+        # ── 板块检索：只查话术库/规则通知的独立集合，不并行 FAQ 与文件 ──
+        scope_label = "话术库" if scope == "scripts" else "规则通知"
+        yield build_status_event(f"正在检索{scope_label}...", context.session_id)
+        faq_result = RetrievalResult(query=prepared.rewritten_query, source_type="faq")
+        doc_result = search_content_scope(context, prepared)
+    else:
+        # ── Stage 3: FAQ retrieval with direct-answer bypass ──
+        # 向前端发送"正在检索 FAQ 知识库"状态事件
+        yield build_status_event("正在检索业务 FAQ 知识库...", context.session_id)
+        # 按检索计划查询 FAQ 集合
+        faq_result = search_faq(context, prepared)
+        # 判断 FAQ 是否达到直出条件（精确匹配或分数超阈值）
+        direct_answer = get_faq_direct_answer(context, prepared, faq_result)
+        # FAQ 检索分数超阈值时可直接返回标准答案，无需 LLM 生成
+        if direct_answer:
+            context.hit_type = "faq_direct"
+            context.sources = faq_result.source_payloads()
+            yield from _finish_with_single_answer(context, history, query, direct_answer)
+            return None
 
-    # ── Stage 4: Document retrieval ──
-    # 向前端发送"正在匹配业务资料"状态事件
-    yield build_status_event("正在匹配相关业务资料...", context.session_id)
-    # 按检索计划查询文档集合
-    doc_result = search_doc(context, prepared)
+        # ── Stage 4: Document retrieval ──
+        # 向前端发送"正在匹配业务资料"状态事件
+        yield build_status_event("正在匹配相关业务资料...", context.session_id)
+        # 按检索计划查询文档集合
+        doc_result = search_doc(context, prepared)
     # ── Stage 5: Answer context preparation ──
     if prepared.plan.retrieval_scope == "full_summary":
         yield build_status_event("正在分段整理整篇文档...", context.session_id)

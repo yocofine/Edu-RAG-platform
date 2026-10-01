@@ -4,6 +4,8 @@
             userName: '',
             userRole: 'user',
             currentView: 'chat',
+            // 智能搜索板块：documents=全部文件（默认）/ rules=规则通知 / scripts=话术库
+            chatScope: 'documents',
             currentSectionId: null,
             currentScriptGroupId: null,
             currentRuleGroupId: null,
@@ -1846,6 +1848,55 @@
             }
         }
 
+        // ==================== 智能搜索板块选择器 ====================
+        const CHAT_SCOPE_LABELS = { documents: '全部文件', rules: '规则通知', scripts: '话术库' };
+
+        function currentChatScope() {
+            const scope = APP_STATE.chatScope;
+            return CHAT_SCOPE_LABELS[scope] ? scope : 'documents';
+        }
+
+        function closeChatScopeMenu() {
+            const menu = document.getElementById('chatScopeMenu');
+            const btn = document.getElementById('chatScopeBtn');
+            if (menu) menu.hidden = true;
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        }
+
+        function toggleChatScopeMenu(event) {
+            if (event) event.stopPropagation();
+            const menu = document.getElementById('chatScopeMenu');
+            const btn = document.getElementById('chatScopeBtn');
+            if (!menu) return;
+            const willOpen = menu.hidden;
+            menu.hidden = !willOpen;
+            if (btn) btn.setAttribute('aria-expanded', String(willOpen));
+        }
+
+        function selectChatScope(scope) {
+            if (!CHAT_SCOPE_LABELS[scope]) scope = 'documents';
+            APP_STATE.chatScope = scope;
+            const label = document.getElementById('chatScopeLabel');
+            if (label) label.textContent = CHAT_SCOPE_LABELS[scope];
+            document.querySelectorAll('#chatScopeMenu .chat-scope-option').forEach(option => {
+                option.classList.toggle('active', option.dataset.scope === scope);
+            });
+            closeChatScopeMenu();
+            const input = document.getElementById('chatInput');
+            if (input) input.focus();
+        }
+
+        function setupChatScope() {
+            const selected = currentChatScope();
+            const label = document.getElementById('chatScopeLabel');
+            if (label) label.textContent = CHAT_SCOPE_LABELS[selected];
+            document.querySelectorAll('#chatScopeMenu .chat-scope-option').forEach(option => {
+                option.classList.toggle('active', option.dataset.scope === selected);
+            });
+            document.addEventListener('click', closeChatScopeMenu);
+            document.addEventListener('keydown', event => { if (event.key === 'Escape') closeChatScopeMenu(); });
+        }
+
         async function sendChatMessage() {
             const input = document.getElementById('chatInput');
             if (input.disabled) return;
@@ -1868,7 +1919,7 @@
             let hasToken = false;
             let streamError = '';
             try {
-                await AIAPI.stream(q, event => {
+                await AIAPI.stream(q, currentChatScope(), event => {
                     if (event.type === 'status' && !hasToken) {
                         paragraph.textContent = event.message || '正在处理...';
                     } else if (event.type === 'token') {
@@ -2541,6 +2592,7 @@
                 sgo = loadScriptGroupOrder(); if (sgo && sgo.length > 0) APP_STATE.scriptGroupOrder = sgo; const
                 rgo = loadRuleGroupOrder(); if (rgo && rgo.length > 0) APP_STATE.ruleGroupOrder = rgo;
             window.addEventListener('replica-auth-expired', handleAuthExpired, { once: true });
+            setupChatScope();
             // authOverlay 默认可见；autoLogin 成功时会通过 loginSuccess 隐藏它
             autoLogin();
             updateStorage();

@@ -69,6 +69,16 @@
                         <div class="chat-messages" id="chatMessages"></div>
                         <div class="chat-input-area">
                             <div class="chat-input-wrapper">
+                                <div class="chat-scope" id="chatScope">
+                                    <button type="button" class="chat-scope-btn" id="chatScopeBtn" aria-haspopup="listbox" aria-expanded="false" onclick="toggleChatScopeMenu(event)">
+                                        <span id="chatScopeLabel">全部文件</span><span class="chat-scope-caret" aria-hidden="true">▾</span>
+                                    </button>
+                                    <div class="chat-scope-menu" id="chatScopeMenu" role="listbox" hidden>
+                                        <button type="button" class="chat-scope-option active" role="option" data-scope="documents" onclick="selectChatScope('documents')">全部文件</button>
+                                        <button type="button" class="chat-scope-option" role="option" data-scope="rules" onclick="selectChatScope('rules')">规则通知</button>
+                                        <button type="button" class="chat-scope-option" role="option" data-scope="scripts" onclick="selectChatScope('scripts')">话术库</button>
+                                    </div>
+                                </div>
                                 <input type="search" id="chatInput" name="knowledge_query" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore placeholder="输入问题或文件需求..." aria-label="智能助手消息输入框" onkeydown="if(event.key==='Enter')sendChatMessage()">
                                 <button type="button" class="chat-send-btn" aria-label="发送搜索" onclick="sendChatMessage()">➤</button>
                             </div>

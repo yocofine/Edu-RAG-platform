@@ -29,7 +29,7 @@ class RetrievalResult:
 
     hits: list[RetrievalHit] = field(default_factory=list)
     query: str = ""
-    source_type: Literal["faq", "doc"] = "doc"
+    source_type: Literal["faq", "doc", "script", "rule"] = "doc"
     elapsed_ms: float = 0.0
 
     @property

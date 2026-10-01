@@ -162,6 +162,13 @@ class Settings(BaseSettings):
     parent_overlap: int = Field(default=100, validation_alias="PARENT_OVERLAP")
     child_overlap: int = Field(default=50, validation_alias="CHILD_OVERLAP")
 
+    # 话术库/规则通知切分参数：条目型数据默认整条入一个 chunk，
+    # 超过 content_item_max_chars 才按 content_chunk_size/content_chunk_overlap 切分。
+    content_item_max_chars: int = Field(default=1200, validation_alias="CONTENT_ITEM_MAX_CHARS")
+    content_chunk_size: int = Field(default=500, validation_alias="CONTENT_CHUNK_SIZE")
+    content_chunk_overlap: int = Field(default=80, validation_alias="CONTENT_CHUNK_OVERLAP")
+    content_chunk_schema_version: str = Field(default="item_v1", validation_alias="CONTENT_CHUNK_SCHEMA_VERSION")
+
     cors_allow_origins: List[str] = Field(default=["http://localhost:8000", "http://127.0.0.1:8000"], validation_alias="CORS_ALLOW_ORIGINS")
 
     @field_validator("cors_allow_origins", mode="before")

@@ -72,6 +72,9 @@ class ScenarioDefinition:
     sample_questions: list[str] = field(default_factory=list)
     resume_project_name: str = ""
     resume_keywords: list[str] = field(default_factory=list)
+    # 话术库/规则通知使用独立 Milvus 集合实现板块级隔离；留空表示该场景未启用对应板块。
+    script_collection: str = ""
+    rule_collection: str = ""
 
     @classmethod
     def from_mapping(cls, payload: dict[str, Any], *, base_dir: Path | None = None) -> "ScenarioDefinition":
@@ -125,6 +128,8 @@ class ScenarioDefinition:
             sample_questions=[str(item) for item in payload.get("sample_questions", [])],
             resume_project_name=str(payload.get("resume_project_name") or payload.get("display_name") or scenario_id),
             resume_keywords=[str(item) for item in payload.get("resume_keywords", [])],
+            script_collection=str(payload.get("script_collection") or ""),
+            rule_collection=str(payload.get("rule_collection") or ""),
         )
 
     def compiled_source_patterns(self) -> dict[str, re.Pattern[str]]:
@@ -198,6 +203,8 @@ class ScenarioDefinition:
                     "valid_sources": self.valid_sources,
                     "faq_collection": self.faq_collection,
                     "doc_collection": self.doc_collection,
+                    "script_collection": self.script_collection,
+                    "rule_collection": self.rule_collection,
                     "data_root": self.data_root,
                     "faq_csv_path": self.faq_csv_path,
                 }

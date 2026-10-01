@@ -461,7 +461,7 @@ class MilvusHybridStore:
         kb_version: str | None = None,
         valid_sources: list[str] | None = None,
         data_scope: DataScope | None = None,
-        source_type: Literal["faq", "doc"],
+        source_type: Literal["faq", "doc", "script", "rule"],
         rerank: bool = True,
         extra_expr: str | None = None,
     ) -> RetrievalResult:
@@ -545,7 +545,7 @@ class MilvusHybridStore:
         kb_version: str | None = None,
         valid_sources: list[str] | None = None,
         data_scope: DataScope | None = None,
-        source_type: Literal["faq", "doc"],
+        source_type: Literal["faq", "doc", "script", "rule"],
         rerank: bool = True,
         extra_expr: str | None = None,
     ) -> RetrievalResult:

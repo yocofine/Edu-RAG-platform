@@ -151,7 +151,12 @@ def reset_collections_if_requested(args: argparse.Namespace, scenario: Any) -> N
 
     ensure_milvus_database()
     client = MilvusClient(**langchain_connection_args("reset_collections"))
-    for collection_name in sorted({scenario.faq_collection, scenario.doc_collection}):
+    # 话术库/规则通知使用独立板块集合，schema 重置时一并清理。
+    collections = {scenario.faq_collection, scenario.doc_collection}
+    collections.update(
+        name for name in (scenario.script_collection, scenario.rule_collection) if name
+    )
+    for collection_name in sorted(collections):
         if client.has_collection(collection_name):
             client.drop_collection(collection_name)
             print(f"Dropped Milvus collection for schema reset: {collection_name}")

@@ -153,3 +153,31 @@ def split_documents(documents: list[Document]) -> tuple[list[Document], list[str
     return chunks, ids
 
 
+def split_content_item(text: str) -> list[str]:
+    """把话术/规则这类"条目型"内容切成 1..N 个 chunk。
+
+    切分策略（与文档的 parent-child 不同）：
+      - 条目是天然语义单元，默认整条入一个 chunk，保证引用能直接指回条目；
+      - 仅当整条超过 content_item_max_chars 时才递归切分，避免长条目语义被稀释。
+
+    参数：
+        text: 已经拼好的条目正文（title + 换行 + content）。
+
+    返回：
+        有序的 chunk 文本列表；空内容返回空列表。
+    """
+    settings = get_settings()
+    normalized = str(text or "").strip()
+    if not normalized:
+        return []
+    if len(normalized) <= settings.content_item_max_chars:
+        return [normalized]
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=settings.content_chunk_size,
+        chunk_overlap=settings.content_chunk_overlap,
+        separators=CHINESE_SEPARATORS,
+    )
+    return [part.strip() for part in splitter.split_text(normalized) if part.strip()]
+
+
+

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from qa_core.governance.data_scope import escape_expr_value
 from qa_core.pipeline.context import direct_faq_answer
@@ -225,3 +226,62 @@ def search_doc(context: RAGQueryContext, prepared: RetrievalPreparation) -> Retr
     context.retrieval_info["doc_elapsed_ms"] = round(doc_result.elapsed_ms, 2)
     context.retrieval_info["doc_top_score"] = doc_result.top_score
     return doc_result
+
+
+def search_content_scope(context: RAGQueryContext, prepared: RetrievalPreparation) -> RetrievalResult:
+    """按板块检索话术库/规则通知（各自独立集合），并强制话术按 owner_id 隔离。
+
+    执行流程：
+      1. 根据 content_scope 选择目标集合（scripts -> script_collection，rules -> rule_collection）。
+      2. 话术板块必须携带 owner_id 过滤；缺 user_id 时直接返回空结果，避免越权召回。
+      3. 复用与文档检索相同的混合检索、重排和数据域过滤（dataset_id 与入库时保持一致）。
+
+    参数：
+        context: RAGQueryContext（提供 content_scope、user_id、data_scope、scenario）
+        prepared: RetrievalPreparation（提供查询变体与检索计划）
+
+    返回：
+        RetrievalResult: 命中结果；板块未启用或集合为空时返回空结果。
+    """
+    scope = (context.content_scope or "documents").strip().lower()
+    source_type = "script" if scope == "scripts" else "rule"
+    empty = RetrievalResult(query=prepared.rewritten_query, source_type=source_type)
+    if scope not in {"scripts", "rules"}:
+        return empty
+
+    collection = context.scenario.script_collection if scope == "scripts" else context.scenario.rule_collection
+    if not collection:
+        context.retrieval_info["content_scope_skipped"] = "collection_not_configured"
+        return empty
+    if not collection_has_data(collection):
+        context.retrieval_info["content_scope_skipped"] = "empty_collection"
+        return empty
+
+    extra_expr = None
+    if scope == "scripts":
+        if not context.user_id:
+            # 话术严格按 owner_id 隔离：拿不到用户身份时宁可不返回，也不能放开过滤。
+            context.retrieval_info["content_scope_skipped"] = "missing_user_id"
+            return empty
+        extra_expr = f'owner_id == "{escape_expr_value(context.user_id)}"'
+
+    # 板块级数据集隔离：检索时把 dataset_id 切到对应板块，与入库 metadata 保持一致。
+    data_scope = replace(context.data_scope, dataset_id=scope)
+    result = context.run_stage(
+        "content_scope_retrieval",
+        lambda: get_doc_store(collection).search_many(
+            prepared.query_variants,
+            k=prepared.plan.doc_top_k,
+            source_filter=None,
+            kb_version=None,
+            valid_sources=None,
+            data_scope=data_scope,
+            source_type=source_type,
+            rerank=prepared.plan.rerank,
+            extra_expr=extra_expr,
+        ),
+    )
+    context.retrieval_info["content_scope"] = scope
+    context.retrieval_info["content_scope_elapsed_ms"] = round(result.elapsed_ms, 2)
+    context.retrieval_info["content_scope_top_score"] = result.top_score
+    return result
