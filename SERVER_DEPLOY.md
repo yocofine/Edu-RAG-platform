@@ -72,9 +72,13 @@ DOMAIN=你的域名
 ACME_EMAIL=证书通知邮箱
 COOKIE_SECURE=true
 WEB_BIND=127.0.0.1:8080
-MODEL_HOST_PATH=./models
-MINERU_API_MAX_CONCURRENT_REQUESTS=1
+MINERU_TIMEOUT_SECONDS=600
+MINERU_MAX_CONCURRENT_PARSES=2
 ```
+
+> `MINERU_MAX_CONCURRENT_PARSES` 是 API 模式下真正生效的解析并发上限。
+> `MINERU_API_MAX_CONCURRENT_REQUESTS` 只作用于本地 `mineru` 容器（`local-mineru` profile），
+> 走 `MINERU_BACKEND=api` 时它不起作用。
 
 不要将 `.env` 提交到 Git 或发送到聊天、工单和公开日志。
 

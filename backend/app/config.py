@@ -49,11 +49,14 @@ class Settings(BaseSettings):
     mineru_backend: str = "api"
     mineru_url: str = "http://mineru:8000"
     mineru_enabled: bool = False
-    mineru_timeout_seconds: int = 1800
+    # 单次解析的总超时（秒）。API 模式下既作整体 deadline，也作 HTTP 读写超时。
+    mineru_timeout_seconds: int = 600
     mineru_api_base_url: str = "https://mineru.net/api/v4"
     mineru_api_key: str = ""
     mineru_api_model_version: str = "vlm"
     mineru_api_poll_interval_seconds: float = 2.0
+    # 同时进行的 MinerU 解析数量上限（进程级闸门）。批量上传时避免一次性把云端并发打满。
+    mineru_max_concurrent_parses: int = 2
     # 用多模态模型给图片/流程图补文字说明，避免图内信息在检索里丢失
     image_analysis_enabled: bool = True
     image_analysis_model: str = ""

@@ -60,6 +60,28 @@ def _notify(on_progress: ProgressCallback | None, completed: int, total: int) ->
         pass
 
 
+_parse_semaphore: "asyncio.Semaphore | None" = None
+_parse_semaphore_limit: int = 0
+
+
+def _get_parse_semaphore() -> asyncio.Semaphore:
+    """返回进程级解析闸门，限制同时在跑的 MinerU 解析数量。
+
+    为什么要闸门：每个入库任务都是一个独立的 asyncio 任务（见 job_dispatcher），
+    批量上传时 N 个文件会同时向 MinerU 提交解析，容易把云端并发/带宽打满并互相拖慢。
+    这里按 MINERU_MAX_CONCURRENT_PARSES 排队，超出上限的任务等待前面的解析结束。
+
+    返回：
+        asyncio.Semaphore: 并发上限取自配置，进程内复用同一个实例。
+    """
+    global _parse_semaphore, _parse_semaphore_limit
+    limit = max(int(getattr(get_settings(), "mineru_max_concurrent_parses", 2) or 2), 1)
+    if _parse_semaphore is None or _parse_semaphore_limit != limit:
+        _parse_semaphore = asyncio.Semaphore(limit)
+        _parse_semaphore_limit = limit
+    return _parse_semaphore
+
+
 class MinerUClient:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -76,15 +98,20 @@ class MinerUClient:
 
         进度只取服务端返回的真实指标。服务端只回 status 时不上报虚假百分比，
         前端改用明确的不定进度状态。
+
+        并发控制：每个入库任务都是独立的 asyncio 任务（job_dispatcher 里 1 job = 1 task），
+        批量上传时会把云端并发和带宽一次性打满，所以这里用进程级信号量把同时在跑的
+        解析数限制在 ``MINERU_MAX_CONCURRENT_PARSES``（默认 2）；超出的任务排队等待。
         """
-        backend = (self.settings.mineru_backend or "api").strip().lower()
-        if backend == "api":
-            await self._parse_api(path, output_zip, ocr_only=ocr_only, on_progress=on_progress)
-            return
-        if backend == "local":
-            await self._parse_local(path, output_zip, ocr_only=ocr_only, on_progress=on_progress)
-            return
-        raise RuntimeError(f"不支持的 MINERU_BACKEND：{backend}")
+        async with _get_parse_semaphore():
+            backend = (self.settings.mineru_backend or "api").strip().lower()
+            if backend == "api":
+                await self._parse_api(path, output_zip, ocr_only=ocr_only, on_progress=on_progress)
+                return
+            if backend == "local":
+                await self._parse_local(path, output_zip, ocr_only=ocr_only, on_progress=on_progress)
+                return
+            raise RuntimeError(f"不支持的 MINERU_BACKEND：{backend}")
 
     async def _parse_local(
         self,
