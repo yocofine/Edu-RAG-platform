@@ -11,11 +11,7 @@ from ..deps import admin_user, csrf_protected, current_user
 from ..models import AuditLog, RuleItem, ScriptItem, User
 from ..schemas import ContentRequest
 from ..services.content_index import delete_content_item, index_content_item
-from ..services.dingtalk import (
-    dingtalk_configured,
-    send_rule_notification,
-    send_rule_notification_safely,
-)
+from ..services.dingtalk import dingtalk_configured, send_rule_notification
 
 
 logger = logging.getLogger(__name__)
@@ -71,20 +67,6 @@ def queue_content_index(background_tasks: BackgroundTasks, kind: str, item_id: s
     background_tasks.add_task(index_content_item, kind, item_id)
 
 
-def queue_rule_notification(background_tasks: BackgroundTasks, item: RuleItem, user: User) -> bool:
-    if not dingtalk_configured():
-        return False
-    background_tasks.add_task(
-        send_rule_notification_safely,
-        title=item.title,
-        content=item.content,
-        group_name=item.group_name,
-        tags=item.tags,
-        operator=user.username,
-    )
-    return True
-
-
 @router.get("/{kind}")
 def list_items(kind: Literal["scripts", "rules"], user: User = Depends(current_user), db: Session = Depends(get_db)):
     model = model_for(kind)
@@ -109,8 +91,8 @@ def create_item(kind: Literal["scripts", "rules"], payload: ContentRequest, back
     db.refresh(item)
     # 写库成功后异步建/刷新向量索引（独立板块集合）。
     queue_content_index(background_tasks, kind, item.id)
-    queued = queue_rule_notification(background_tasks, item, user) if kind == "rules" else False
-    return {"item": serialize(item), "dingtalk_queued": queued}
+    # 保存规则只落库，不再自动推送钉钉；推送请走 POST /rules/{id}/notify-dingtalk。
+    return {"item": serialize(item)}
 
 
 @router.put("/{kind}/{item_id}", dependencies=[Depends(csrf_protected)])
@@ -125,8 +107,8 @@ def update_item(kind: Literal["scripts", "rules"], item_id: str, payload: Conten
     db.commit()
     # 内容变更后异步重建该条目的向量索引（旧 chunk 由索引服务按 index_chunk_ids 清理）。
     queue_content_index(background_tasks, kind, item_id)
-    queued = queue_rule_notification(background_tasks, item, user) if kind == "rules" else False
-    return {"item": serialize(item), "dingtalk_queued": queued}
+    # 保存规则只落库，不再自动推送钉钉；推送请走 POST /rules/{id}/notify-dingtalk。
+    return {"item": serialize(item)}
 
 
 @router.delete("/{kind}/{item_id}", dependencies=[Depends(csrf_protected)])

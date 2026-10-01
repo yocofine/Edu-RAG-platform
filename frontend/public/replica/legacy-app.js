@@ -1611,12 +1611,12 @@
                     if (!isAdmin()) { showToast('仅管理员可编辑规则', 'error'); return; }
                     const title = titleInput || r.title;
                     const result = await RuleAPI.update(eid, { title, content, groupId: gid, tags: tags.join(','), imagePath });
-                    showToast(result.dingtalk_queued ? '规则已更新并推送钉钉' : '规则已更新（钉钉机器人未配置）', 'success');
+                    showToast('规则已更新（如需推送钉钉，请点卡片上的「推送钉钉」）', 'success');
                 } else {
                     const ex = MOCK_RULES.filter(r => r.groupId === gid);
                     const title = titleInput || (gn + ' #' + (ex.length + 1));
                     const result = await RuleAPI.create({ title, content, groupId: gid, tags: tags.join(','), imagePath });
-                    showToast(result.dingtalk_queued ? '规则已创建并推送钉钉' : '规则已创建（钉钉机器人未配置）', 'success');
+                    showToast('规则已创建（如需推送钉钉，请点卡片上的「推送钉钉」）', 'success');
                 }
                 closeRuleEditor();
                 await loadAllData();
