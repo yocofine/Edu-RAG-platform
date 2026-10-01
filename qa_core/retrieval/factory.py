@@ -25,9 +25,15 @@ _has_data_client = None
 
 
 def collection_has_data(collection_name: str) -> bool:
-    """实时判断 Milvus 集合是否存在且有数据，用于跳过空的 FAQ 集合。
+    """实时判断 Milvus 集合是否存在且有数据，用于跳过空的集合。
 
-    每次实时读取集合统计，不做长期缓存，避免知识库重建后判断结果过期。
+    不能用 ``get_collection_stats().row_count`` 判断：该统计只覆盖**已 flush** 的数据，
+    刚写入但尚未 flush 的集合会返回 0，导致整条检索被静默跳过。
+    实测（话术/规则入库后立刻检索）：flush 前 row_count=0 → 被判为空、直接返回
+    "信息不足"；手动 flush 后立刻变成 row_count=21。
+
+    因此这里改成一次 ``limit=1`` 的真实查询做探测；查询失败时按"有数据"处理，
+    宁可多跑一次检索，也不要误跳过整条链路。
     """
     global _has_data_client
     try:
@@ -37,8 +43,13 @@ def collection_has_data(collection_name: str) -> bool:
             _has_data_client = MilvusClient(uri=get_settings().milvus_uri)
         if not _has_data_client.has_collection(collection_name):
             return False
-        stats = _has_data_client.get_collection_stats(collection_name)
-        return int(stats.get("row_count", 0) or 0) > 0
+        rows = _has_data_client.query(
+            collection_name=collection_name,
+            filter="",
+            output_fields=["pk"],
+            limit=1,
+        )
+        return len(rows) > 0
     except Exception as exc:  # noqa: BLE001
         logger.warning("检查集合 %s 数据量失败，按有数据处理：%s", collection_name, exc)
         return True
